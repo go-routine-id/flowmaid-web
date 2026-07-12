@@ -11,7 +11,8 @@ fn parse(source: &str) -> Result<Document, JsError> {
     flowmaid::parser::parse_document(source).map_err(|e| JsError::new(&e.to_string()))
 }
 
-/// Render Mermaid-syntax text (flowchart / erDiagram / classDiagram)
+/// Render Mermaid-syntax text (flowchart / erDiagram / classDiagram /
+/// sequenceDiagram / pie)
 /// to an SVG string. Errors carry the 1-indexed line number, e.g.
 /// `line 3: closing ']' not found`.
 #[wasm_bindgen]
@@ -50,6 +51,8 @@ pub fn node_keys(source: &str) -> Result<String, JsError> {
             .map(|c| c.name.as_str())
             .collect::<Vec<_>>()
             .join("\n"),
+        // Pie / sequence are static (no draggable nodes).
+        Document::Sequence(_) | Document::Pie(_) => String::new(),
     })
 }
 
@@ -74,6 +77,8 @@ pub fn auto_positions(source: &str) -> Result<Vec<f64>, JsError> {
             .iter()
             .flat_map(|n| [n.x, n.y])
             .collect(),
+        // Pie / sequence have no draggable node positions.
+        Document::Sequence(_) | Document::Pie(_) => Vec::new(),
     })
 }
 
@@ -99,6 +104,7 @@ pub fn node_sizes(source: &str) -> Result<Vec<f64>, JsError> {
             .iter()
             .flat_map(|n| [n.w, n.h])
             .collect(),
+        Document::Sequence(_) | Document::Pie(_) => Vec::new(),
     })
 }
 
@@ -119,6 +125,8 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
         Document::Flowchart(g) => g.nodes.len(),
         Document::Er(d) => d.entities.len(),
         Document::Class(d) => d.classes.len(),
+        // Static diagrams: no positions expected, rendered as-is.
+        Document::Sequence(_) | Document::Pie(_) => 0,
     };
     if positions.len() != n * 2 {
         return Err(format!(
@@ -141,6 +149,9 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
         }
         Document::Er(d) => flowmaid::er::to_svg(&flowmaid::er::route(&d, &centers)),
         Document::Class(d) => flowmaid::class::to_svg(&flowmaid::class::route(&d, &centers)),
+        // Static diagrams ignore positions and render from layout.
+        Document::Sequence(d) => flowmaid::seq::to_svg(&flowmaid::seq::scene(&d)),
+        Document::Pie(d) => flowmaid::pie::to_svg(&flowmaid::pie::scene(&d)),
     })
 }
 
@@ -150,7 +161,7 @@ pub fn engine_version() -> String {
     // Kept in sync by Cargo's resolver; there is no runtime query
     // for a dependency's version, so we track it manually against
     // Cargo.toml.
-    "0.9.0".to_string()
+    "0.10.0".to_string()
 }
 
 #[cfg(test)]
@@ -160,7 +171,12 @@ mod tests {
         assert!(flowmaid::render_svg("flowchart TD\nA-->B").is_ok());
         assert!(flowmaid::render_svg("erDiagram\nA ||--o{ B : has").is_ok());
         assert!(flowmaid::render_svg("classDiagram\nAnimal <|-- Dog").is_ok());
+        assert!(flowmaid::render_svg("sequenceDiagram\nA->>B: hi").is_ok());
+        assert!(flowmaid::render_svg("pie\n\"a\" : 1\n\"b\" : 2").is_ok());
         assert!(flowmaid::render_svg("gantt\nx").is_err());
+        // Static diagrams render through routed_impl with no positions.
+        assert!(super::routed_impl("pie\n\"a\" : 1", &[]).is_ok());
+        assert!(super::routed_impl("sequenceDiagram\nA->>B: hi", &[]).is_ok());
     }
 
     #[test]
