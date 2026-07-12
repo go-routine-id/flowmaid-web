@@ -103,6 +103,15 @@ pub fn render_routed(source: &str, positions: &[f64]) -> Result<String, JsError>
             positions.len()
         )));
     }
+    // The wasm boundary is where untrusted JS input arrives —
+    // NaN/infinite coordinates would silently poison the SVG
+    // (found by a bughunter). Fail loudly instead.
+    if let Some(i) = positions.iter().position(|v| !v.is_finite()) {
+        return Err(JsError::new(&format!(
+            "position[{}] is not a finite number",
+            i
+        )));
+    }
     let centers: Vec<(f64, f64)> = positions.chunks(2).map(|c| (c[0], c[1])).collect();
     Ok(match doc {
         Document::Flowchart(g) => {
@@ -128,5 +137,16 @@ mod tests {
         assert!(flowmaid::render_svg("flowchart TD\nA-->B").is_ok());
         assert!(flowmaid::render_svg("erDiagram\nA ||--o{ B : has").is_ok());
         assert!(flowmaid::render_svg("gantt\nx").is_err());
+    }
+
+    #[test]
+    fn routed_rejects_non_finite_positions() {
+        // Regression (bughunter): NaN from JS used to flow straight
+        // into the SVG coordinates.
+        let err = super::render_routed("A --> B", &[f64::NAN, 1.0, 2.0, 3.0]);
+        assert!(err.is_err());
+        let err = super::render_routed("A --> B", &[1.0, f64::INFINITY, 2.0, 3.0]);
+        assert!(err.is_err());
+        assert!(super::render_routed("A --> B", &[1.0, 2.0, 3.0, 4.0]).is_ok());
     }
 }
