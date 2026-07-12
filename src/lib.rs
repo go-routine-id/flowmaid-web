@@ -90,27 +90,30 @@ pub fn node_sizes(source: &str) -> Result<Vec<f64>, JsError> {
 /// app's drag path.
 #[wasm_bindgen]
 pub fn render_routed(source: &str, positions: &[f64]) -> Result<String, JsError> {
-    let doc = parse(source)?;
+    routed_impl(source, positions).map_err(|e| JsError::new(&e))
+}
+
+/// Native-testable core of [`render_routed`] — `JsError` can only
+/// be constructed on wasm targets, so validation lives here.
+fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
+    let doc = flowmaid::parser::parse_document(source).map_err(|e| e.to_string())?;
     let n = match &doc {
         Document::Flowchart(g) => g.nodes.len(),
         Document::Er(d) => d.entities.len(),
     };
     if positions.len() != n * 2 {
-        return Err(JsError::new(&format!(
+        return Err(format!(
             "expected {} coordinates for {} nodes, got {}",
             n * 2,
             n,
             positions.len()
-        )));
+        ));
     }
     // The wasm boundary is where untrusted JS input arrives —
     // NaN/infinite coordinates would silently poison the SVG
     // (found by a bughunter). Fail loudly instead.
     if let Some(i) = positions.iter().position(|v| !v.is_finite()) {
-        return Err(JsError::new(&format!(
-            "position[{}] is not a finite number",
-            i
-        )));
+        return Err(format!("position[{}] is not a finite number", i));
     }
     let centers: Vec<(f64, f64)> = positions.chunks(2).map(|c| (c[0], c[1])).collect();
     Ok(match doc {
@@ -143,10 +146,8 @@ mod tests {
     fn routed_rejects_non_finite_positions() {
         // Regression (bughunter): NaN from JS used to flow straight
         // into the SVG coordinates.
-        let err = super::render_routed("A --> B", &[f64::NAN, 1.0, 2.0, 3.0]);
-        assert!(err.is_err());
-        let err = super::render_routed("A --> B", &[1.0, f64::INFINITY, 2.0, 3.0]);
-        assert!(err.is_err());
-        assert!(super::render_routed("A --> B", &[1.0, 2.0, 3.0, 4.0]).is_ok());
+        assert!(super::routed_impl("A --> B", &[f64::NAN, 1.0, 2.0, 3.0]).is_err());
+        assert!(super::routed_impl("A --> B", &[1.0, f64::INFINITY, 2.0, 3.0]).is_err());
+        assert!(super::routed_impl("A --> B", &[1.0, 2.0, 3.0, 4.0]).is_ok());
     }
 }
