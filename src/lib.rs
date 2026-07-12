@@ -11,8 +11,8 @@ fn parse(source: &str) -> Result<Document, JsError> {
     flowmaid::parser::parse_document(source).map_err(|e| JsError::new(&e.to_string()))
 }
 
-/// Render Mermaid-syntax text (flowchart / erDiagram) to an SVG
-/// string. Errors carry the 1-indexed line number, e.g.
+/// Render Mermaid-syntax text (flowchart / erDiagram / classDiagram)
+/// to an SVG string. Errors carry the 1-indexed line number, e.g.
 /// `line 3: closing ']' not found`.
 #[wasm_bindgen]
 pub fn render_svg(source: &str) -> Result<String, JsError> {
@@ -44,6 +44,12 @@ pub fn node_keys(source: &str) -> Result<String, JsError> {
             .map(|e| e.name.as_str())
             .collect::<Vec<_>>()
             .join("\n"),
+        Document::Class(d) => d
+            .classes
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"),
     })
 }
 
@@ -57,6 +63,12 @@ pub fn auto_positions(source: &str) -> Result<Vec<f64>, JsError> {
             .flat_map(|n| [n.x, n.y])
             .collect(),
         Document::Er(d) => flowmaid::er::scene(&d)
+            .scene
+            .nodes
+            .iter()
+            .flat_map(|n| [n.x, n.y])
+            .collect(),
+        Document::Class(d) => flowmaid::class::scene(&d)
             .scene
             .nodes
             .iter()
@@ -81,6 +93,12 @@ pub fn node_sizes(source: &str) -> Result<Vec<f64>, JsError> {
             .iter()
             .flat_map(|n| [n.w, n.h])
             .collect(),
+        Document::Class(d) => flowmaid::class::scene(&d)
+            .scene
+            .nodes
+            .iter()
+            .flat_map(|n| [n.w, n.h])
+            .collect(),
     })
 }
 
@@ -100,6 +118,7 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
     let n = match &doc {
         Document::Flowchart(g) => g.nodes.len(),
         Document::Er(d) => d.entities.len(),
+        Document::Class(d) => d.classes.len(),
     };
     if positions.len() != n * 2 {
         return Err(format!(
@@ -121,6 +140,7 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
             flowmaid::scene::to_svg(&flowmaid::scene::route(&g, &centers))
         }
         Document::Er(d) => flowmaid::er::to_svg(&flowmaid::er::route(&d, &centers)),
+        Document::Class(d) => flowmaid::class::to_svg(&flowmaid::class::route(&d, &centers)),
     })
 }
 
@@ -130,16 +150,29 @@ pub fn engine_version() -> String {
     // Kept in sync by Cargo's resolver; there is no runtime query
     // for a dependency's version, so we track it manually against
     // Cargo.toml.
-    "0.4.0".to_string()
+    "0.9.0".to_string()
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
-    fn render_works_for_both_diagram_types() {
+    fn render_works_for_all_diagram_types() {
         assert!(flowmaid::render_svg("flowchart TD\nA-->B").is_ok());
         assert!(flowmaid::render_svg("erDiagram\nA ||--o{ B : has").is_ok());
+        assert!(flowmaid::render_svg("classDiagram\nAnimal <|-- Dog").is_ok());
         assert!(flowmaid::render_svg("gantt\nx").is_err());
+    }
+
+    #[test]
+    fn routed_handles_class_diagrams() {
+        // The wasm-bound getters (node_keys/auto_positions/node_sizes)
+        // return JsError and aren't native-testable, but their new
+        // Document::Class arms are guaranteed by compilation. Exercise
+        // the runtime path through routed_impl (3 classes => 6 coords).
+        let src = "classDiagram\nAnimal <|-- Dog\nAnimal <|-- Cat";
+        assert!(super::routed_impl(src, &[0.0, 0.0, 100.0, 100.0, 200.0, 0.0]).is_ok());
+        assert!(super::routed_impl(src, &[0.0, 0.0]).is_err(), "wrong length");
+        assert!(super::routed_impl(src, &[f64::NAN; 6]).is_err(), "non-finite");
     }
 
     #[test]
