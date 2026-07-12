@@ -33,7 +33,10 @@
     padding: 14px; font: 13px/1.5 ui-monospace, Menlo, monospace; resize: none;
     outline: none; color: var(--ink); background: #fff;
   }
-  #view { flex: 1; overflow: auto; display: grid; place-items: center; padding: 20px; }
+  #view {
+    flex: 1; overflow: auto; display: grid; place-items: center; padding: 20px;
+    touch-action: none; /* pointer-drag nodes on touch screens too */
+  }
   #view svg { max-width: 100%; height: auto; box-shadow: 0 2px 14px rgba(35,40,64,.08); border-radius: 8px; }
   #error {
     display: none; padding: 8px 16px; font-size: 13px; color: var(--err);
@@ -49,13 +52,14 @@
 <body>
 <header>
   <h1>flowmaid</h1>
-  <span class="sub">Mermaid-like diagrams, rendered by pure Rust in your browser</span>
+  <span class="sub">Mermaid-like diagrams, rendered by pure Rust in your browser — drag the nodes!</span>
   <span class="spacer"></span>
   <select id="examples">
     <option value="flow">Example: Flowchart</option>
     <option value="styled">Example: Styled flowchart</option>
     <option value="er">Example: ER diagram</option>
   </select>
+  <button id="relayout">Auto layout</button>
   <button id="download">Download SVG</button>
 </header>
 <main>
@@ -71,7 +75,9 @@
 </footer>
 
 <script type="module">
-import init, { render_svg, engine_version } from "./pkg/flowmaid_web.js";
+import init, {
+  render_routed, node_keys, auto_positions, node_sizes, engine_version,
+} from "./pkg/flowmaid_web.js";
 
 const EXAMPLES = {
   flow: `flowchart TD
@@ -108,27 +114,110 @@ const editor = document.getElementById("editor");
 const view = document.getElementById("view");
 const errBox = document.getElementById("error");
 
-// Last-good-render: half-typed text keeps the previous diagram on
-// screen instead of flashing an error frame — same UX as the
-// desktop app.
-function render() {
+// Last good document — the drag/render state. Mirrors the desktop
+// app: half-typed text keeps the previous diagram interactive, and
+// dragged positions survive edits via their node keys.
+let good = null; // { src, keys: string[], pos: number[], sizes: number[] }
+
+function rebuild(src) {
   try {
-    view.innerHTML = render_svg(editor.value);
+    const keys = node_keys(src).split("\n").filter(Boolean);
+    const auto = Array.from(auto_positions(src));
+    const sizes = Array.from(node_sizes(src));
+    const old = new Map(
+      good ? good.keys.map((k, i) => [k, [good.pos[i * 2], good.pos[i * 2 + 1]]]) : []
+    );
+    const pos = keys.flatMap((k, i) => old.get(k) ?? [auto[i * 2], auto[i * 2 + 1]]);
+    good = { src, keys, pos, sizes };
     errBox.style.display = "none";
+    render();
   } catch (e) {
     errBox.textContent = String(e.message ?? e);
     errBox.style.display = "block";
   }
 }
 
-let t;
+function render() {
+  if (!good) return;
+  view.innerHTML = render_routed(good.src, new Float64Array(good.pos));
+}
+
+let raf = 0;
+function scheduleRender() {
+  if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); });
+}
+
+// ── Drag & drop, desktop-style: hit-test on node boxes, apply
+//    pointer deltas in world units, let the engine re-route. ──
+let drag = null; // { i, cx, cy }
+
+function svgScale() {
+  const svg = view.querySelector("svg");
+  if (!svg) return null;
+  const r = svg.getBoundingClientRect();
+  const vb = svg.viewBox.baseVal;
+  return { svg, r, sx: vb.width / r.width, sy: vb.height / r.height };
+}
+
+function hitNode(ev) {
+  const s = svgScale();
+  if (!s || !good) return -1;
+  const x = (ev.clientX - s.r.left) * s.sx;
+  const y = (ev.clientY - s.r.top) * s.sy;
+  for (let i = good.keys.length - 1; i >= 0; i--) {
+    const cx = good.pos[i * 2], cy = good.pos[i * 2 + 1];
+    const w = good.sizes[i * 2], h = good.sizes[i * 2 + 1];
+    if (Math.abs(x - cx) <= w / 2 && Math.abs(y - cy) <= h / 2) return i;
+  }
+  return -1;
+}
+
+view.addEventListener("pointerdown", (ev) => {
+  const i = hitNode(ev);
+  if (i < 0) return;
+  drag = { i, cx: ev.clientX, cy: ev.clientY };
+  view.setPointerCapture(ev.pointerId);
+  view.style.cursor = "grabbing";
+  ev.preventDefault();
+});
+
+view.addEventListener("pointermove", (ev) => {
+  if (!drag) {
+    view.style.cursor = hitNode(ev) >= 0 ? "grab" : "default";
+    return;
+  }
+  const s = svgScale();
+  if (!s) return;
+  good.pos[drag.i * 2] += (ev.clientX - drag.cx) * s.sx;
+  good.pos[drag.i * 2 + 1] += (ev.clientY - drag.cy) * s.sy;
+  drag.cx = ev.clientX;
+  drag.cy = ev.clientY;
+  scheduleRender();
+});
+
+for (const t of ["pointerup", "pointercancel"]) {
+  view.addEventListener(t, () => {
+    drag = null;
+    view.style.cursor = "default";
+  });
+}
+
+// ── Wiring ──
+let deb;
 editor.addEventListener("input", () => {
-  clearTimeout(t);
-  t = setTimeout(render, 120);
+  clearTimeout(deb);
+  deb = setTimeout(() => rebuild(editor.value), 120);
 });
 
 document.getElementById("examples").addEventListener("change", (e) => {
   editor.value = EXAMPLES[e.target.value];
+  good = null; // fresh example, fresh layout
+  rebuild(editor.value);
+});
+
+document.getElementById("relayout").addEventListener("click", () => {
+  if (!good) return;
+  good.pos = Array.from(auto_positions(good.src));
   render();
 });
 
@@ -147,7 +236,7 @@ await init();
 document.getElementById("version").textContent =
   `engine v${engine_version()} · wasm`;
 editor.value = EXAMPLES.flow;
-render();
+rebuild(editor.value);
 </script>
 </body>
 </html>
