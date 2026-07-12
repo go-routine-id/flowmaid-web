@@ -1,5 +1,6 @@
 # flowmaid-web
 
+[![CI](https://github.com/go-routine-id/flowmaid-web/actions/workflows/ci.yml/badge.svg)](https://github.com/go-routine-id/flowmaid-web/actions/workflows/ci.yml)
 The [flowmaid](https://crates.io/crates/flowmaid) diagram engine compiled to WebAssembly, plus a zero-dependency web playground — Mermaid-like diagrams rendered entirely in your browser by pure Rust. The whole engine is a ~166 KB wasm bundle.
 
 **Live playground:** https://go-routine-id.github.io/flowmaid-web/
