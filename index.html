@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flowmaid playground</title>
+<style>
+  :root {
+    --ink: #232840; --line: #d5d9ec; --accent: #5b6dc0; --bg: #f6f7fc;
+    --err: #e03131;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: Helvetica, Arial, sans-serif; color: var(--ink);
+    display: flex; flex-direction: column; height: 100vh; background: var(--bg);
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    background: #fff; border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 18px; margin: 0; color: var(--accent); }
+  header .sub { font-size: 12px; color: #6a7086; }
+  header .spacer { flex: 1; }
+  button, select {
+    font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  main { display: flex; flex: 1; min-height: 0; }
+  #editor {
+    width: 38%; min-width: 280px; border: 0; border-right: 1px solid var(--line);
+    padding: 14px; font: 13px/1.5 ui-monospace, Menlo, monospace; resize: none;
+    outline: none; color: var(--ink); background: #fff;
+  }
+  #view { flex: 1; overflow: auto; display: grid; place-items: center; padding: 20px; }
+  #view svg { max-width: 100%; height: auto; box-shadow: 0 2px 14px rgba(35,40,64,.08); border-radius: 8px; }
+  #error {
+    display: none; padding: 8px 16px; font-size: 13px; color: var(--err);
+    background: #fff0f0; border-top: 1px solid #ffd7d7;
+  }
+  footer {
+    padding: 6px 16px; font-size: 12px; color: #6a7086; background: #fff;
+    border-top: 1px solid var(--line); display: flex; gap: 14px;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>flowmaid</h1>
+  <span class="sub">Mermaid-like diagrams, rendered by pure Rust in your browser</span>
+  <span class="spacer"></span>
+  <select id="examples">
+    <option value="flow">Example: Flowchart</option>
+    <option value="styled">Example: Styled flowchart</option>
+    <option value="er">Example: ER diagram</option>
+  </select>
+  <button id="download">Download SVG</button>
+</header>
+<main>
+  <textarea id="editor" spellcheck="false"></textarea>
+  <div id="view"></div>
+</main>
+<div id="error"></div>
+<footer>
+  <span id="version">loading engine…</span>
+  <a href="https://crates.io/crates/flowmaid" target="_blank">crates.io</a>
+  <a href="https://github.com/go-routine-id/flowmaid" target="_blank">engine source</a>
+  <a href="https://github.com/go-routine-id/flowmaid-web" target="_blank">playground source</a>
+</footer>
+
+<script type="module">
+import init, { render_svg, engine_version } from "./pkg/flowmaid_web.js";
+
+const EXAMPLES = {
+  flow: `flowchart TD
+    A([Start]) --> B[Read input]
+    B --> C{Valid?}
+    C -->|yes| D[Process data]
+    C -->|no| E[Show error]
+    E --> B
+    D ==> F((Done))`,
+  styled: `flowchart LR
+    U[User] --> FE(Frontend) --> API{Auth?}
+    API -->|ok| SVC[Service]
+    API -.->|denied| ERR[401]
+    SVC ==> DB[Database]:::store
+    classDef store fill:#e4f5f4,stroke:#199a8e,color:#0b6e66
+    style ERR fill:#ffe3e3,stroke:#e03131,color:#c92a2a
+    style U fill:#fff3bf,stroke:#f08c00,stroke-width:3px`,
+  er: `erDiagram
+    users ||--o{ posts : "writes"
+    posts }o--|| categories : "in"
+    users {
+        uuid id PK "default gen_random_uuid()"
+        varchar(255) email UK "not null"
+        timestamp created_at
+    }
+    posts {
+        uuid id PK
+        uuid author_id FK "not null, index"
+        text body
+    }`,
+};
+
+const editor = document.getElementById("editor");
+const view = document.getElementById("view");
+const errBox = document.getElementById("error");
+
+// Last-good-render: half-typed text keeps the previous diagram on
+// screen instead of flashing an error frame — same UX as the
+// desktop app.
+function render() {
+  try {
+    view.innerHTML = render_svg(editor.value);
+    errBox.style.display = "none";
+  } catch (e) {
+    errBox.textContent = String(e.message ?? e);
+    errBox.style.display = "block";
+  }
+}
+
+let t;
+editor.addEventListener("input", () => {
+  clearTimeout(t);
+  t = setTimeout(render, 120);
+});
+
+document.getElementById("examples").addEventListener("change", (e) => {
+  editor.value = EXAMPLES[e.target.value];
+  render();
+});
+
+document.getElementById("download").addEventListener("click", () => {
+  const svg = view.querySelector("svg");
+  if (!svg) return;
+  const blob = new Blob([svg.outerHTML], { type: "image/svg+xml" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "diagram.svg";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+await init();
+document.getElementById("version").textContent =
+  `engine v${engine_version()} · wasm`;
+editor.value = EXAMPLES.flow;
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "name": "flowmaid-web",
+  "type": "module",
+  "description": "WASM bindings + web playground for the flowmaid diagram engine",
+  "version": "0.1.0",
+  "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/go-routine-id/flowmaid-web"
+  },
+  "files": [
+    "flowmaid_web_bg.wasm",
+    "flowmaid_web.js",
+    "flowmaid_web.d.ts"
+  ],
+  "main": "flowmaid_web.js",
+  "types": "flowmaid_web.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
