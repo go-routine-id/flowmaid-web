@@ -28,13 +28,6 @@ export function node_keys(source: string): string;
 export function node_sizes(source: string): Float64Array;
 
 /**
- * Render a whole Markdown document to an HTML fragment: prose
- * becomes HTML, every ```mermaid block an inline SVG, and a bad
- * block a line-numbered error box instead of a broken page.
- */
-export function render_markdown_html(source: string): string;
-
-/**
  * Render with caller-provided centres (flat `[x, y]` pairs, same
  * order as [`node_keys`]) — edges re-route around the dragged
  * positions without re-running layout, exactly like the desktop
@@ -58,7 +51,6 @@ export interface InitOutput {
     readonly engine_version: () => [number, number];
     readonly node_keys: (a: number, b: number) => [number, number, number, number];
     readonly node_sizes: (a: number, b: number) => [number, number, number, number];
-    readonly render_markdown_html: (a: number, b: number) => [number, number];
     readonly render_routed: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly render_svg: (a: number, b: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;

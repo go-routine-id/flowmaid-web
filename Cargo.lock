@@ -16,12 +16,9 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "flowmaid"
-version = "0.12.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee5d7354e7d7a789aa6c6b8f469b1bd8d4383026f1d6b4f75cdcb386f1b75846"
-dependencies = [
- "markdown",
-]
+checksum = "b49ecb4e26bee0e2662d999341c4c2880fc9984f080ce1bded9b8e65b7c50024"
 
 [[package]]
 name = "flowmaid-web"
@@ -29,15 +26,6 @@ version = "0.1.0"
 dependencies = [
  "flowmaid",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "markdown"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5cab8f2cadc416a82d2e783a1946388b31654d391d1c7d92cc1f03e295b1deb"
-dependencies = [
- "unicode-id",
 ]
 
 [[package]]
@@ -80,12 +68,6 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
-
-[[package]]
-name = "unicode-id"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70ba288e709927c043cbe476718d37be306be53fb1fafecd0dbe36d072be2580"
 
 [[package]]
 name = "unicode-ident"
