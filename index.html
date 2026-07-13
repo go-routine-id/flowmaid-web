@@ -58,6 +58,9 @@
     <option value="flow">Example: Flowchart</option>
     <option value="styled">Example: Styled flowchart</option>
     <option value="er">Example: ER diagram</option>
+    <option value="class">Example: Class diagram</option>
+    <option value="seq">Example: Sequence diagram</option>
+    <option value="pie">Example: Pie chart</option>
   </select>
   <button id="relayout">Auto layout</button>
   <button id="download">Download SVG</button>
@@ -109,6 +112,39 @@ const EXAMPLES = {
         uuid author_id FK "not null, index"
         text body
     }`,
+  class: `classDiagram
+    class Animal {
+        +String name
+        -int age
+        +move() void
+    }
+    class Dog {
+        +bark() void
+    }
+    Animal <|-- Dog
+    Animal <|-- Cat
+    Animal "1" o-- "*" Toy : owns
+    Dog "1" --> "*" Toy : plays with
+    Cat ..> Toy : ignores`,
+  seq: `sequenceDiagram
+    autonumber
+    actor U as User
+    participant API
+    participant DB
+    U->>+API: GET /profile
+    API->>DB: SELECT user
+    DB-->>API: row
+    API-->>-U: 200 OK
+    Note over U,API: cached for 60s
+    loop every minute
+        API->>API: refresh token
+    end`,
+  pie: `pie showData
+    title Key elements in Product X
+    "Calcium" : 42.96
+    "Potassium" : 50.05
+    "Magnesium" : 10.01
+    "Iron" : 6`,
 };
 
 const editor = document.getElementById("editor");
@@ -119,16 +155,22 @@ const errBox = document.getElementById("error");
 // app: half-typed text keeps the previous diagram interactive, and
 // dragged positions survive edits via their node keys.
 let good = null; // { src, keys: string[], pos: number[], sizes: number[] }
+// Dragged positions by node key — outlives `good`, so drags survive
+// even when the text passes through a static diagram (pie/sequence,
+// which contribute no keys) and back. Found by a bug hunt.
+const savedPos = new Map();
 
 function rebuild(src) {
   try {
     const keys = node_keys(src).split("\n").filter(Boolean);
     const auto = Array.from(auto_positions(src));
     const sizes = Array.from(node_sizes(src));
-    const old = new Map(
-      good ? good.keys.map((k, i) => [k, [good.pos[i * 2], good.pos[i * 2 + 1]]]) : []
-    );
-    const pos = keys.flatMap((k, i) => old.get(k) ?? [auto[i * 2], auto[i * 2 + 1]]);
+    if (good) {
+      good.keys.forEach((k, i) =>
+        savedPos.set(k, [good.pos[i * 2], good.pos[i * 2 + 1]])
+      );
+    }
+    const pos = keys.flatMap((k, i) => savedPos.get(k) ?? [auto[i * 2], auto[i * 2 + 1]]);
     good = { src, keys, pos, sizes };
     errBox.style.display = "none";
     render();
@@ -219,6 +261,9 @@ document.getElementById("examples").addEventListener("change", (e) => {
 document.getElementById("relayout").addEventListener("click", () => {
   if (!good) return;
   good.pos = Array.from(auto_positions(good.src));
+  // Auto layout is an explicit reset — drop the remembered drags so
+  // they don't resurrect on the next edit.
+  good.keys.forEach((k) => savedPos.delete(k));
   render();
 });
 

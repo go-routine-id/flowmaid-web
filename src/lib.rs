@@ -129,12 +129,23 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
         Document::Sequence(_) | Document::Pie(_) => 0,
     };
     if positions.len() != n * 2 {
-        return Err(format!(
-            "expected {} coordinates for {} nodes, got {}",
-            n * 2,
-            n,
-            positions.len()
-        ));
+        // A tailored message for static diagrams — "expected 0
+        // coordinates for 0 nodes" read like the document was empty
+        // (bug hunt).
+        return Err(if matches!(doc, Document::Sequence(_) | Document::Pie(_)) {
+            format!(
+                "this diagram type is static (not draggable): pass an \
+                 empty positions array, got {} values",
+                positions.len()
+            )
+        } else {
+            format!(
+                "expected {} coordinates for {} nodes, got {}",
+                n * 2,
+                n,
+                positions.len()
+            )
+        });
     }
     // The wasm boundary is where untrusted JS input arrives —
     // NaN/infinite coordinates would silently poison the SVG
@@ -155,13 +166,13 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
     })
 }
 
-/// flowmaid engine version baked into this bundle.
+/// flowmaid engine version baked into this bundle — derived from
+/// Cargo.lock by build.rs, so it can never drift from the crate that
+/// was actually compiled in (the old hand-maintained literal sat at
+/// "0.4.0" through four engine releases).
 #[wasm_bindgen]
 pub fn engine_version() -> String {
-    // Kept in sync by Cargo's resolver; there is no runtime query
-    // for a dependency's version, so we track it manually against
-    // Cargo.toml.
-    "0.10.0".to_string()
+    env!("FLOWMAID_VERSION").to_string()
 }
 
 #[cfg(test)]

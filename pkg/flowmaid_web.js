@@ -18,7 +18,10 @@ export function auto_positions(source) {
 }
 
 /**
- * flowmaid engine version baked into this bundle.
+ * flowmaid engine version baked into this bundle — derived from
+ * Cargo.lock by build.rs, so it can never drift from the crate that
+ * was actually compiled in (the old hand-maintained literal sat at
+ * "0.4.0" through four engine releases).
  * @returns {string}
  */
 export function engine_version() {
@@ -113,8 +116,9 @@ export function render_routed(source, positions) {
 }
 
 /**
- * Render Mermaid-syntax text (flowchart / erDiagram) to an SVG
- * string. Errors carry the 1-indexed line number, e.g.
+ * Render Mermaid-syntax text (flowchart / erDiagram / classDiagram /
+ * sequenceDiagram / pie)
+ * to an SVG string. Errors carry the 1-indexed line number, e.g.
  * `line 3: closing ']' not found`.
  * @param {string} source
  * @returns {string}
