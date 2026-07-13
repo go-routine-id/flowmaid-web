@@ -33,7 +33,8 @@ pub fn render_svg(source: &str) -> Result<String, JsError> {
 #[wasm_bindgen]
 pub fn node_keys(source: &str) -> Result<String, JsError> {
     Ok(match parse(source)? {
-        Document::Flowchart(g) => g
+        // State diagrams share the flowchart Graph — same drag model.
+        Document::Flowchart(g) | Document::State(g) => g
             .nodes
             .iter()
             .map(|n| n.id.as_str())
@@ -60,7 +61,7 @@ pub fn node_keys(source: &str) -> Result<String, JsError> {
 #[wasm_bindgen]
 pub fn auto_positions(source: &str) -> Result<Vec<f64>, JsError> {
     Ok(match parse(source)? {
-        Document::Flowchart(g) => flowmaid::scene::scene(&g)
+        Document::Flowchart(g) | Document::State(g) => flowmaid::scene::scene(&g)
             .nodes
             .iter()
             .flat_map(|n| [n.x, n.y])
@@ -87,7 +88,7 @@ pub fn auto_positions(source: &str) -> Result<Vec<f64>, JsError> {
 #[wasm_bindgen]
 pub fn node_sizes(source: &str) -> Result<Vec<f64>, JsError> {
     Ok(match parse(source)? {
-        Document::Flowchart(g) => flowmaid::scene::scene(&g)
+        Document::Flowchart(g) | Document::State(g) => flowmaid::scene::scene(&g)
             .nodes
             .iter()
             .flat_map(|n| [n.w, n.h])
@@ -122,7 +123,7 @@ pub fn render_routed(source: &str, positions: &[f64]) -> Result<String, JsError>
 fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
     let doc = flowmaid::parser::parse_document(source).map_err(|e| e.to_string())?;
     let n = match &doc {
-        Document::Flowchart(g) => g.nodes.len(),
+        Document::Flowchart(g) | Document::State(g) => g.nodes.len(),
         Document::Er(d) => d.entities.len(),
         Document::Class(d) => d.classes.len(),
         // Static diagrams: no positions expected, rendered as-is.
@@ -155,7 +156,7 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
     }
     let centers: Vec<(f64, f64)> = positions.chunks(2).map(|c| (c[0], c[1])).collect();
     Ok(match doc {
-        Document::Flowchart(g) => {
+        Document::Flowchart(g) | Document::State(g) => {
             flowmaid::scene::to_svg(&flowmaid::scene::route(&g, &centers))
         }
         Document::Er(d) => flowmaid::er::to_svg(&flowmaid::er::route(&d, &centers)),

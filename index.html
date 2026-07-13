@@ -61,6 +61,7 @@
     <option value="class">Example: Class diagram</option>
     <option value="seq">Example: Sequence diagram</option>
     <option value="pie">Example: Pie chart</option>
+    <option value="statechart">Example: State diagram</option>
   </select>
   <button id="relayout">Auto layout</button>
   <button id="download">Download SVG</button>
@@ -145,6 +146,22 @@ const EXAMPLES = {
     "Potassium" : 50.05
     "Magnesium" : 10.01
     "Iron" : 6`,
+  statechart: `stateDiagram-v2
+    [*] --> Idle
+    Idle : waiting for input
+    Idle --> Validating : submit
+    state Validating {
+        direction LR
+        [*] --> Syntax
+        Syntax --> Semantics : ok
+        Semantics --> [*]
+    }
+    state decide <<choice>>
+    Validating --> decide
+    decide --> Rejected : invalid
+    decide --> Done : valid
+    Rejected --> Idle : retry
+    Done --> [*]`,
 };
 
 const editor = document.getElementById("editor");
