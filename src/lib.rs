@@ -167,6 +167,14 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
     })
 }
 
+/// Render a whole Markdown document to an HTML fragment: prose
+/// becomes HTML, every ```mermaid block an inline SVG, and a bad
+/// block a line-numbered error box instead of a broken page.
+#[wasm_bindgen]
+pub fn render_markdown_html(source: &str) -> String {
+    flowmaid::md::render_html(source)
+}
+
 /// flowmaid engine version baked into this bundle — derived from
 /// Cargo.lock by build.rs, so it can never drift from the crate that
 /// was actually compiled in (the old hand-maintained literal sat at

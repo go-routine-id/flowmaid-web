@@ -84,6 +84,28 @@ export function node_sizes(source) {
 }
 
 /**
+ * Render a whole Markdown document to an HTML fragment: prose
+ * becomes HTML, every ```mermaid block an inline SVG, and a bad
+ * block a line-numbered error box instead of a broken page.
+ * @param {string} source
+ * @returns {string}
+ */
+export function render_markdown_html(source) {
+    let deferred2_0;
+    let deferred2_1;
+    try {
+        const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.render_markdown_html(ptr0, len0);
+        deferred2_0 = ret[0];
+        deferred2_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+    }
+}
+
+/**
  * Render with caller-provided centres (flat `[x, y]` pairs, same
  * order as [`node_keys`]) — edges re-route around the dragged
  * positions without re-running layout, exactly like the desktop

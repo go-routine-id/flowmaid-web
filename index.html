@@ -38,6 +38,12 @@
     touch-action: none; /* pointer-drag nodes on touch screens too */
   }
   #view svg { max-width: 100%; height: auto; box-shadow: 0 2px 14px rgba(35,40,64,.08); border-radius: 8px; }
+  /* Mode dokumen Markdown: prosa + diagram inline. */
+  #view.doc { display: block; padding: 1.2rem 1.6rem; overflow: auto; }
+  #view.doc figure.flowmaid-diagram { margin: 1rem 0; }
+  #view.doc pre.flowmaid-error { color: #e05a5a; background: #3a2224; padding: .6rem .8rem; border-radius: 6px; }
+  #view.doc pre { overflow-x: auto; }
+  #view.doc h1, #view.doc h2 { border-bottom: 1px solid rgba(128,128,128,.25); padding-bottom: .2em; }
   #error {
     display: none; padding: 8px 16px; font-size: 13px; color: var(--err);
     background: #fff0f0; border-top: 1px solid #ffd7d7;
@@ -62,6 +68,7 @@
     <option value="seq">Example: Sequence diagram</option>
     <option value="pie">Example: Pie chart</option>
     <option value="statechart">Example: State diagram</option>
+    <option value="mddoc">Example: Markdown document</option>
   </select>
   <button id="relayout">Auto layout</button>
   <button id="download">Download SVG</button>
@@ -82,6 +89,7 @@
 <script type="module">
 import init, {
   render_routed, node_keys, auto_positions, node_sizes, engine_version,
+  render_markdown_html,
 } from "./pkg/flowmaid_web.js";
 
 const EXAMPLES = {
@@ -162,6 +170,39 @@ const EXAMPLES = {
     decide --> Done : valid
     Rejected --> Idle : retry
     Done --> [*]`,
+  mddoc: `# Payment service design
+
+The main flow, from the gateway down:
+
+\`\`\`mermaid
+flowchart LR
+    User([User]) --> GW(API Gateway)
+    GW --> Pay[Payment Service]
+    Pay --> DB[(Postgres)]
+\`\`\`
+
+## Transaction lifecycle
+
+Every transaction is a small state machine:
+
+\`\`\`mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Paid : capture ok
+    Pending --> Failed : declined
+    Failed --> Pending : retry
+    Paid --> [*]
+\`\`\`
+
+> Numbers below are from the Q2 dashboard.
+
+\`\`\`mermaid
+pie showData
+    title Traffic per channel
+    "Mobile" : 62
+    "Web" : 31
+    "API" : 7
+\`\`\``,
 };
 
 const editor = document.getElementById("editor");
@@ -177,7 +218,25 @@ let good = null; // { src, keys: string[], pos: number[], sizes: number[] }
 // which contribute no keys) and back. Found by a bug hunt.
 const savedPos = new Map();
 
+// Teks yang terlihat seperti dokumen Markdown (bukan diagram polos)
+// dirender sebagai dokumen: prosa + diagram inline, tanpa drag.
+function isMarkdownDoc(src) {
+  const head = src.trimStart();
+  if (/^(flowchart|graph|erDiagram|classDiagram|sequenceDiagram|stateDiagram|pie)\b/.test(head)) {
+    return false;
+  }
+  return /(^|\n)\s*#{1,6}\s|```|~~~/.test(src);
+}
+
 function rebuild(src) {
+  if (isMarkdownDoc(src)) {
+    view.classList.add("doc");
+    view.innerHTML = render_markdown_html(src);
+    good = null; // tak ada node yang bisa digeser di mode dokumen
+    errBox.style.display = "none";
+    return;
+  }
+  view.classList.remove("doc");
   try {
     const keys = node_keys(src).split("\n").filter(Boolean);
     const auto = Array.from(auto_positions(src));
