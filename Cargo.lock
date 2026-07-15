@@ -16,9 +16,9 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "flowmaid"
-version = "0.11.1"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b6948067032160544c488448b8e605231b163810e8f70ca0e28de99d41cd545"
+checksum = "5aca814a4c49d35c2104e5edbe9d51f0a40110ba317604de19b555d78861c3ca"
 
 [[package]]
 name = "flowmaid-web"

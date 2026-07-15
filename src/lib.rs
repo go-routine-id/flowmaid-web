@@ -52,8 +52,11 @@ pub fn node_keys(source: &str) -> Result<String, JsError> {
             .map(|c| c.name.as_str())
             .collect::<Vec<_>>()
             .join("\n"),
-        // Pie / sequence are static (no draggable nodes).
-        Document::Sequence(_) | Document::Pie(_) => String::new(),
+        // Static diagrams have no draggable nodes.
+        Document::Sequence(_)
+        | Document::Pie(_)
+        | Document::Mindmap(_)
+        | Document::Journey(_) => String::new(),
     })
 }
 
@@ -78,8 +81,11 @@ pub fn auto_positions(source: &str) -> Result<Vec<f64>, JsError> {
             .iter()
             .flat_map(|n| [n.x, n.y])
             .collect(),
-        // Pie / sequence have no draggable node positions.
-        Document::Sequence(_) | Document::Pie(_) => Vec::new(),
+        // Static diagrams have no draggable node positions.
+        Document::Sequence(_)
+        | Document::Pie(_)
+        | Document::Mindmap(_)
+        | Document::Journey(_) => Vec::new(),
     })
 }
 
@@ -105,7 +111,10 @@ pub fn node_sizes(source: &str) -> Result<Vec<f64>, JsError> {
             .iter()
             .flat_map(|n| [n.w, n.h])
             .collect(),
-        Document::Sequence(_) | Document::Pie(_) => Vec::new(),
+        Document::Sequence(_)
+        | Document::Pie(_)
+        | Document::Mindmap(_)
+        | Document::Journey(_) => Vec::new(),
     })
 }
 
@@ -127,13 +136,22 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
         Document::Er(d) => d.entities.len(),
         Document::Class(d) => d.classes.len(),
         // Static diagrams: no positions expected, rendered as-is.
-        Document::Sequence(_) | Document::Pie(_) => 0,
+        Document::Sequence(_)
+        | Document::Pie(_)
+        | Document::Mindmap(_)
+        | Document::Journey(_) => 0,
     };
     if positions.len() != n * 2 {
         // A tailored message for static diagrams — "expected 0
         // coordinates for 0 nodes" read like the document was empty
         // (bug hunt).
-        return Err(if matches!(doc, Document::Sequence(_) | Document::Pie(_)) {
+        return Err(if matches!(
+            doc,
+            Document::Sequence(_)
+                | Document::Pie(_)
+                | Document::Mindmap(_)
+                | Document::Journey(_)
+        ) {
             format!(
                 "this diagram type is static (not draggable): pass an \
                  empty positions array, got {} values",
@@ -164,6 +182,8 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
         // Static diagrams ignore positions and render from layout.
         Document::Sequence(d) => flowmaid::seq::to_svg(&flowmaid::seq::scene(&d)),
         Document::Pie(d) => flowmaid::pie::to_svg(&flowmaid::pie::scene(&d)),
+        Document::Mindmap(d) => flowmaid::mindmap::to_svg(&flowmaid::mindmap::scene(&d)),
+        Document::Journey(d) => flowmaid::journey::to_svg(&flowmaid::journey::scene(&d)),
     })
 }
 
