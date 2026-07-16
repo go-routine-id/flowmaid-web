@@ -4,10 +4,39 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>flowmaid playground</title>
+<script>
+  (function () {
+    var t = localStorage.getItem("theme");
+    if (t) document.documentElement.dataset.theme = t;
+  })();
+  function toggleTheme() {
+    var cur = document.documentElement.dataset.theme ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    var next = cur === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("theme", next);
+  }
+</script>
 <style>
   :root {
     --ink: #232840; --line: #d5d9ec; --accent: #5b6dc0; --bg: #f6f7fc;
-    --err: #e03131;
+    --err: #e03131; --card: #ffffff; --muted: #6a7086;
+    --err-bg: #fff0f0; --err-line: #ffd7d7;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --ink: #dfe3f2; --line: #31374f; --accent: #8b9aec; --bg: #14161e;
+    --err: #ff7b7b; --card: #1b1e2b; --muted: #9298b0;
+    --err-bg: #2a1a1e; --err-line: #55303a;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #dfe3f2; --line: #31374f; --accent: #8b9aec; --bg: #14161e;
+      --err: #ff7b7b; --card: #1b1e2b; --muted: #9298b0;
+      --err-bg: #2a1a1e; --err-line: #55303a;
+      color-scheme: dark;
+    }
   }
   * { box-sizing: border-box; }
   body {
@@ -16,14 +45,14 @@
   }
   header {
     display: flex; align-items: center; gap: 12px; padding: 10px 16px;
-    background: #fff; border-bottom: 1px solid var(--line);
+    background: var(--card); border-bottom: 1px solid var(--line);
   }
   header h1 { font-size: 18px; margin: 0; color: var(--accent); }
-  header .sub { font-size: 12px; color: #6a7086; }
+  header .sub { font-size: 12px; color: var(--muted); }
   header .spacer { flex: 1; }
   button, select {
     font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px;
-    border: 1px solid var(--line); background: #fff; color: var(--ink);
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
     cursor: pointer;
   }
   button:hover { border-color: var(--accent); color: var(--accent); }
@@ -31,7 +60,7 @@
   #editor {
     width: 38%; min-width: 280px; border: 0; border-right: 1px solid var(--line);
     padding: 14px; font: 13px/1.5 ui-monospace, Menlo, monospace; resize: none;
-    outline: none; color: var(--ink); background: #fff;
+    outline: none; color: var(--ink); background: var(--card);
   }
   #view {
     flex: 1; overflow: auto; display: grid; place-items: center; padding: 20px;
@@ -40,10 +69,10 @@
   #view svg { max-width: 100%; height: auto; box-shadow: 0 2px 14px rgba(35,40,64,.08); border-radius: 8px; }
   #error {
     display: none; padding: 8px 16px; font-size: 13px; color: var(--err);
-    background: #fff0f0; border-top: 1px solid #ffd7d7;
+    background: var(--err-bg); border-top: 1px solid var(--err-line);
   }
   footer {
-    padding: 6px 16px; font-size: 12px; color: #6a7086; background: #fff;
+    padding: 6px 16px; font-size: 12px; color: var(--muted); background: var(--card);
     border-top: 1px solid var(--line); display: flex; gap: 14px;
   }
   footer a { color: var(--accent); text-decoration: none; }
@@ -55,6 +84,7 @@
   <span class="sub">Mermaid-like diagrams, rendered by pure Rust in your browser — drag the nodes!</span>
   <span class="spacer"></span>
   <a href="/flowmaid/docs/" style="font-size:13px;color:var(--accent);text-decoration:none;padding:6px 4px;">Docs</a>
+  <button id="theme" title="Toggle dark mode" onclick="toggleTheme()">🌓</button>
   <select id="examples">
     <option value="flow">Example: Flowchart</option>
     <option value="styled">Example: Styled flowchart</option>
