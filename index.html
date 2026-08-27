@@ -125,6 +125,8 @@
     border-color: transparent; color: #fff;
   }
   #download:hover { color: #fff; filter: brightness(1.06); }
+  body.editor-hidden #editor { display: none; }
+  #toggle-editor[aria-pressed="false"] { color: var(--muted); border-style: dashed; }
 
   main { display: flex; flex: 1; min-height: 0; }
   #editor {
@@ -261,6 +263,7 @@
       <li role="option" data-value="advance">Swimlane (advance)</li>
     </ul>
   </div>
+  <button id="toggle-editor" aria-pressed="true" title="Show / hide the code panel">Code</button>
   <button id="relayout">Auto layout</button>
   <button id="download">Download SVG</button>
 </header>
@@ -600,6 +603,25 @@ for (const t of ["pointerup", "pointercancel"]) {
     view.style.cursor = "default";
   });
 }
+
+// ── Code panel visibility ──
+const toggleEditorBtn = document.getElementById("toggle-editor");
+
+function setEditorVisible(visible) {
+  document.body.classList.toggle("editor-hidden", !visible);
+  toggleEditorBtn.setAttribute("aria-pressed", String(visible));
+  try { localStorage.setItem("editor", visible ? "shown" : "hidden"); } catch {}
+}
+
+toggleEditorBtn.addEventListener("click", () => {
+  setEditorVisible(document.body.classList.contains("editor-hidden"));
+});
+try {
+  if (localStorage.getItem("editor") === "hidden") {
+    document.body.classList.add("editor-hidden");
+    toggleEditorBtn.setAttribute("aria-pressed", "false");
+  }
+} catch {}
 
 // ── Wiring ──
 let deb;
