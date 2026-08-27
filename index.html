@@ -93,6 +93,7 @@
     <option value="seq">Example: Sequence diagram</option>
     <option value="pie">Example: Pie chart</option>
     <option value="statechart">Example: State diagram</option>
+    <option value="advance">Example: Swimlane (advance)</option>
   </select>
   <button id="relayout">Auto layout</button>
   <button id="download">Download SVG</button>
@@ -114,6 +115,7 @@
 <script type="module">
 import init, {
   render_routed, node_keys, auto_positions, node_sizes, engine_version,
+  render_advance_svg, layout_advance_json, render_advance_routed_with_lanes,
 } from "./pkg/flowmaid_web.js";
 
 const EXAMPLES = {
@@ -194,6 +196,23 @@ const EXAMPLES = {
     decide --> Done : valid
     Rejected --> Idle : retry
     Done --> [*]`,
+  advance: `{
+  "lanes": [
+    {"id": "dev", "title": "Development"},
+    {"id": "qa", "title": "QA"}
+  ],
+  "nodes": [
+    {"id": "design", "label": "Design", "lane": "dev", "shape": "rect"},
+    {"id": "code", "label": "Code", "lane": "dev", "shape": "rounded"},
+    {"id": "test", "label": "Test", "lane": "qa", "shape": "diamond"},
+    {"id": "sign", "label": "Sign off", "lane": "qa", "shape": "stadium"}
+  ],
+  "edges": [
+    {"from": "design", "to": "code", "label": "implements"},
+    {"from": "code", "to": "test", "label": "hand over"},
+    {"from": "test", "to": "sign", "label": "approve"}
+  ]
+}`,
 };
 
 const editor = document.getElementById("editor");
@@ -209,8 +228,45 @@ let good = null; // { src, keys: string[], pos: number[], sizes: number[] }
 // which contribute no keys) and back. Found by a bug hunt.
 const savedPos = new Map();
 
+// Advance / swimlane diagrams use JSON input instead of Mermaid syntax.
+function isAdvance(src) {
+  return src.trim().startsWith("{");
+}
+
 function rebuild(src) {
   try {
+    // Positions semantics differ between advance (offset-x + y) and
+    // other diagrams (absolute centres), so drop remembered drags when
+    // switching diagram types.
+    if (good && isAdvance(src) !== isAdvance(good.src)) {
+      savedPos.clear();
+    }
+    // Advance diagrams are self-contained JSON: seed drag state from
+    // layout_advance_json, then render via the routed renderer so nodes
+    // can be dragged just like flowcharts.
+    if (isAdvance(src)) {
+      const layout = JSON.parse(layout_advance_json(src));
+      const nodes = layout.nodes;
+      const keys = nodes.map((n) => n.id);
+      const sizes = nodes.flatMap((n) => [n.w, n.h]);
+      const laneIndex = Object.fromEntries(layout.lanes.map((l, i) => [l.id, i]));
+      const nodeLanes = nodes.map((n) => laneIndex[n.lane]);
+      const margin = layout.lanes[0]?.x ?? 24;
+      const gap = layout.lanes.length > 1
+        ? layout.lanes[1].x - (layout.lanes[0].x + layout.lanes[0].w)
+        : 40;
+      const lanes = layout.lanes.map((l) => ({ id: l.id, w: l.w }));
+      if (good) {
+        good.keys.forEach((k, i) =>
+          savedPos.set(k, [good.pos[i * 2], good.pos[i * 2 + 1]])
+        );
+      }
+      const pos = nodes.flatMap((n, i) => savedPos.get(keys[i]) ?? [0, n.y]);
+      good = { src, keys, pos, sizes, advance: { lanes, margin, gap, nodeLanes } };
+      errBox.style.display = "none";
+      render();
+      return;
+    }
     const keys = node_keys(src).split("\n").filter(Boolean);
     const auto = Array.from(auto_positions(src));
     const sizes = Array.from(node_sizes(src));
@@ -229,9 +285,58 @@ function rebuild(src) {
   }
 }
 
+function advanceAbsPos() {
+  if (!good?.advance) return [];
+  const { lanes, margin, gap, nodeLanes } = good.advance;
+  const abs = new Float64Array(good.pos.length);
+  for (let i = 0; i < good.keys.length; i++) {
+    let lx = margin;
+    const li = nodeLanes[i];
+    for (let j = 0; j < li; j++) lx += lanes[j].w + gap;
+    abs[i * 2] = lx + lanes[li].w / 2 + good.pos[i * 2];
+    abs[i * 2 + 1] = good.pos[i * 2 + 1];
+  }
+  return abs;
+}
+
+function addLaneSeparators(svg) {
+  if (!good?.advance || !svg) return;
+  const ns = "http://www.w3.org/2000/svg";
+  const { lanes, margin } = good.advance;
+  const vb = svg.viewBox.baseVal;
+  let lx = margin;
+  for (let i = 0; i < lanes.length; i++) {
+    lx += lanes[i].w;
+    const x = lx;
+    const line = document.createElementNS(ns, "line");
+    line.setAttribute("x1", x);
+    line.setAttribute("y1", margin);
+    line.setAttribute("x2", x);
+    line.setAttribute("y2", vb.height - margin);
+    line.setAttribute("stroke-width", "2");
+    line.setAttribute("stroke-dasharray", "4 3");
+    line.setAttribute("opacity", "0.55");
+    line.style.stroke = "var(--line)";
+    line.style.pointerEvents = "none";
+    svg.appendChild(line);
+  }
+}
+
 function render() {
   if (!good) return;
-  view.innerHTML = render_routed(good.src, new Float64Array(good.pos));
+  if (isAdvance(good.src)) {
+    const { lanes, margin, gap } = good.advance;
+    view.innerHTML = render_advance_routed_with_lanes(
+      good.src,
+      advanceAbsPos(),
+      new Float64Array(lanes.map((l) => l.w)),
+      margin,
+      gap
+    );
+    addLaneSeparators(view.querySelector("svg"));
+  } else {
+    view.innerHTML = render_routed(good.src, new Float64Array(good.pos));
+  }
 }
 
 let raf = 0;
@@ -239,9 +344,11 @@ function scheduleRender() {
   if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); });
 }
 
-// ── Drag & drop, desktop-style: hit-test on node boxes, apply
-//    pointer deltas in world units, let the engine re-route. ──
+// ── Drag & drop, desktop-style: hit-test on node boxes and lane
+//    borders, apply pointer deltas in world units, let the engine
+//    re-route. ──
 let drag = null; // { i, cx, cy }
+let laneDrag = null; // { i, cx }
 
 function svgScale() {
   const svg = view.querySelector("svg");
@@ -256,15 +363,38 @@ function hitNode(ev) {
   if (!s || !good) return -1;
   const x = (ev.clientX - s.r.left) * s.sx;
   const y = (ev.clientY - s.r.top) * s.sy;
+  const abs = isAdvance(good.src) ? advanceAbsPos() : good.pos;
   for (let i = good.keys.length - 1; i >= 0; i--) {
-    const cx = good.pos[i * 2], cy = good.pos[i * 2 + 1];
+    const cx = abs[i * 2], cy = abs[i * 2 + 1];
     const w = good.sizes[i * 2], h = good.sizes[i * 2 + 1];
     if (Math.abs(x - cx) <= w / 2 && Math.abs(y - cy) <= h / 2) return i;
   }
   return -1;
 }
 
+function hitLaneBorder(ev) {
+  const s = svgScale();
+  if (!s || !good?.advance) return -1;
+  const x = (ev.clientX - s.r.left) * s.sx;
+  const { lanes, margin, gap } = good.advance;
+  let lx = margin;
+  for (let i = 0; i < lanes.length; i++) {
+    const borderX = lx + lanes[i].w;
+    if (Math.abs(x - borderX) <= 12) return i;
+    lx += lanes[i].w + (i < lanes.length - 1 ? gap : 0);
+  }
+  return -1;
+}
+
 view.addEventListener("pointerdown", (ev) => {
+  const li = hitLaneBorder(ev);
+  if (li >= 0) {
+    laneDrag = { i: li, cx: ev.clientX };
+    view.setPointerCapture(ev.pointerId);
+    view.style.cursor = "col-resize";
+    ev.preventDefault();
+    return;
+  }
   const i = hitNode(ev);
   if (i < 0) return;
   drag = { i, cx: ev.clientX, cy: ev.clientY };
@@ -274,8 +404,18 @@ view.addEventListener("pointerdown", (ev) => {
 });
 
 view.addEventListener("pointermove", (ev) => {
+  if (laneDrag) {
+    const s = svgScale();
+    if (!s) return;
+    const dx = (ev.clientX - laneDrag.cx) * s.sx;
+    good.advance.lanes[laneDrag.i].w = Math.max(80, good.advance.lanes[laneDrag.i].w + dx);
+    laneDrag.cx = ev.clientX;
+    scheduleRender();
+    return;
+  }
   if (!drag) {
-    view.style.cursor = hitNode(ev) >= 0 ? "grab" : "default";
+    const border = hitLaneBorder(ev);
+    view.style.cursor = border >= 0 ? "col-resize" : (hitNode(ev) >= 0 ? "grab" : "default");
     return;
   }
   const s = svgScale();
@@ -290,6 +430,7 @@ view.addEventListener("pointermove", (ev) => {
 for (const t of ["pointerup", "pointercancel"]) {
   view.addEventListener(t, () => {
     drag = null;
+    laneDrag = null;
     view.style.cursor = "default";
   });
 }
@@ -309,7 +450,14 @@ document.getElementById("examples").addEventListener("change", (e) => {
 
 document.getElementById("relayout").addEventListener("click", () => {
   if (!good) return;
-  good.pos = Array.from(auto_positions(good.src));
+  if (isAdvance(good.src)) {
+    const layout = JSON.parse(layout_advance_json(good.src));
+    good.advance.lanes = layout.lanes.map((l) => ({ id: l.id, w: l.w }));
+    good.pos = layout.nodes.flatMap((n) => [0, n.y]);
+    good.sizes = layout.nodes.flatMap((n) => [n.w, n.h]);
+  } else {
+    good.pos = Array.from(auto_positions(good.src));
+  }
   // Auto layout is an explicit reset — drop the remembered drags so
   // they don't resurrect on the next edit.
   good.keys.forEach((k) => savedPos.delete(k));

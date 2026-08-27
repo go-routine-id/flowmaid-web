@@ -3,8 +3,12 @@
 export const memory: WebAssembly.Memory;
 export const auto_positions: (a: number, b: number) => [number, number, number, number];
 export const engine_version: () => [number, number];
+export const layout_advance_json: (a: number, b: number) => [number, number, number, number];
 export const node_keys: (a: number, b: number) => [number, number, number, number];
 export const node_sizes: (a: number, b: number) => [number, number, number, number];
+export const render_advance_routed: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const render_advance_routed_with_lanes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
+export const render_advance_svg: (a: number, b: number) => [number, number, number, number];
 export const render_routed: (a: number, b: number, c: number, d: number) => [number, number, number, number];
 export const render_svg: (a: number, b: number) => [number, number, number, number];
 export const __wbindgen_externrefs: WebAssembly.Table;
