@@ -127,6 +127,12 @@
   #download:hover { color: #fff; filter: brightness(1.06); }
   body.editor-hidden #editor { display: none; }
   #toggle-editor[aria-pressed="false"] { color: var(--muted); border-style: dashed; }
+  .icon-btn {
+    width: 32px; height: 32px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .icon-btn svg { width: 15px; height: 15px; transition: transform .18s ease; }
+  body.editor-hidden .icon-btn svg { transform: scaleX(-1); }
 
   main { display: flex; flex: 1; min-height: 0; }
   #editor {
@@ -263,7 +269,11 @@
       <li role="option" data-value="advance">Swimlane (advance)</li>
     </ul>
   </div>
-  <button id="toggle-editor" aria-pressed="true" title="Show / hide the code panel">Code</button>
+  <button id="toggle-editor" class="icon-btn" aria-pressed="true" title="Show / hide code panel" aria-label="Show / hide code panel">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M7.5 4L3.5 8l4 4"/><path d="M12.5 4L8.5 8l4 4"/>
+    </svg>
+  </button>
   <button id="relayout">Auto layout</button>
   <button id="download">Download SVG</button>
 </header>
