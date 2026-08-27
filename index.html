@@ -127,14 +127,27 @@
   #download:hover { color: #fff; filter: brightness(1.06); }
   body.editor-hidden #editor { display: none; }
   #toggle-editor[aria-pressed="false"] { color: var(--muted); border-style: dashed; }
-  .icon-btn {
-    width: 32px; height: 32px; padding: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-  }
-  .icon-btn svg { width: 15px; height: 15px; transition: transform .18s ease; }
-  body.editor-hidden .icon-btn svg { transform: scaleX(-1); }
 
-  main { display: flex; flex: 1; min-height: 0; }
+  /* ── Collapse handle riding the editor/view divider ── */
+  .collapse-handle {
+    position: absolute; top: 50%; left: max(38%, 280px);
+    transform: translate(-50%, -50%);
+    width: 22px; height: 44px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 8px; z-index: 4;
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    transition: left .2s ease, background-color .15s ease, box-shadow .15s ease;
+  }
+  .collapse-handle:hover {
+    background: var(--card); border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-glow);
+  }
+  .collapse-handle svg { width: 13px; height: 13px; transition: transform .18s ease; }
+  body.editor-hidden .collapse-handle { left: 12px; }
+  body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
+
+  main { display: flex; flex: 1; min-height: 0; position: relative; }
   #editor {
     width: 38%; min-width: 280px; border: 0; border-right: 1px solid var(--line);
     padding: 16px 18px; font: 500 13px/1.65 ui-monospace, Menlo, monospace;
@@ -231,6 +244,9 @@
       resize: vertical; /* drag the divider taller if needed */
     }
     #view { order: 1; flex: 1; min-height: 0; padding: 14px; background-size: 18px 18px; }
+
+    .collapse-handle { top: auto; left: 14px; bottom: calc(36vh - 22px); bottom: calc(36dvh - 22px); transform: none; }
+    body.editor-hidden .collapse-handle { left: 12px; bottom: 10px; }
   }
   @media (max-width: 720px) {
     header { gap: 8px; padding: 10px 12px; }
@@ -269,16 +285,16 @@
       <li role="option" data-value="advance">Swimlane (advance)</li>
     </ul>
   </div>
-  <button id="toggle-editor" class="icon-btn" aria-pressed="true" title="Show / hide code panel" aria-label="Show / hide code panel">
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M7.5 4L3.5 8l4 4"/><path d="M12.5 4L8.5 8l4 4"/>
-    </svg>
-  </button>
   <button id="relayout">Auto layout</button>
   <button id="download">Download SVG</button>
 </header>
 <main>
   <textarea id="editor" spellcheck="false"></textarea>
+  <button id="toggle-editor" class="collapse-handle" aria-pressed="true" title="Show / hide code panel" aria-label="Show / hide code panel">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M7.5 4L3.5 8l4 4"/><path d="M12.5 4L8.5 8l4 4"/>
+    </svg>
+  </button>
   <div id="view"></div>
 </main>
 <div id="error"></div>
