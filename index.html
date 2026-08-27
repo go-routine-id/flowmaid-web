@@ -132,13 +132,12 @@
   /* ── Collapse handle riding the editor/view divider ── */
   .seam-anchor { position: relative; width: 0; flex: none; }
   .collapse-handle {
-    position: absolute; top: 50%; left: 0;
-    transform: translate(-50%, -50%);
+    position: absolute; top: 50%; left: -13px;
+    margin-top: -27px; /* static centering — no transform, ever */
     width: 26px; height: 54px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center;
     border-radius: 9px; z-index: 4;
     background: color-mix(in srgb, var(--card) 88%, transparent);
-    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
     transition: background-color .15s ease, box-shadow .15s ease,
                 border-color .15s ease;
   }
@@ -146,8 +145,8 @@
     background: var(--card); border-color: var(--accent);
     box-shadow: 0 0 0 4px var(--accent-glow), var(--shadow-md);
   }
-  .collapse-handle svg { width: 14px; height: 14px; transition: transform .18s ease; }
-  body.editor-hidden .collapse-handle { left: 12px; transform: translate(0, -50%); }
+  .collapse-handle svg { width: 14px; height: 14px; }
+  body.editor-hidden .collapse-handle { left: 12px; }
   body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
   body.editor-hidden .collapse-handle { left: 12px; }
   body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
@@ -243,7 +242,7 @@
   @media (max-width: 860px) {
     main { flex-direction: column; }
     #editor {
-      order: 2; width: auto; min-width: 0;
+      order: 3; width: auto; min-width: 0;
       height: 36vh; height: 36dvh; flex: none;
       border-right: 0; border-top: 1px solid var(--line);
       resize: vertical; /* drag the divider taller if needed */
@@ -251,8 +250,8 @@
     #view { order: 1; flex: 1; min-height: 0; padding: 14px; background-size: 18px 18px; }
 
     .seam-anchor { order: 2; height: 0; align-self: stretch; }
-    .collapse-handle { top: 0; transform: translate(-50%, -50%); }
-    body.editor-hidden .collapse-handle { left: 12px; bottom: auto; transform: translate(0, -140%); }
+    .collapse-handle { top: 0; margin-top: -27px; }
+    body.editor-hidden .collapse-handle { left: 12px; margin-top: -64px; }
   }
   @media (max-width: 720px) {
     header { gap: 8px; padding: 10px 12px; }
