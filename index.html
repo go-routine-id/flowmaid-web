@@ -132,18 +132,19 @@
   .collapse-handle {
     position: absolute; top: 50%; left: max(38%, 280px);
     transform: translate(-50%, -50%);
-    width: 22px; height: 44px; padding: 0;
+    width: 26px; height: 54px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center;
-    border-radius: 8px; z-index: 4;
+    border-radius: 9px; z-index: 4;
     background: color-mix(in srgb, var(--card) 88%, transparent);
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-    transition: left .2s ease, background-color .15s ease, box-shadow .15s ease;
+    transition: left .2s ease, background-color .15s ease,
+                box-shadow .15s ease, border-color .15s ease;
   }
   .collapse-handle:hover {
     background: var(--card); border-color: var(--accent);
-    box-shadow: 0 0 0 4px var(--accent-glow);
+    box-shadow: 0 0 0 4px var(--accent-glow), var(--shadow-md);
   }
-  .collapse-handle svg { width: 13px; height: 13px; transition: transform .18s ease; }
+  .collapse-handle svg { width: 14px; height: 14px; transition: transform .18s ease; }
   body.editor-hidden .collapse-handle { left: 12px; }
   body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
 
