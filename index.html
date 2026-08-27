@@ -159,14 +159,30 @@
     caret-color: var(--accent);
   }
   #view {
-    flex: 1; overflow: auto; display: grid; place-items: center; padding: 26px;
+    flex: 1; overflow: hidden; position: relative; padding: 26px;
     touch-action: none; /* pointer-drag nodes on touch screens too */
     background-image: radial-gradient(
       color-mix(in srgb, var(--line) 66%, transparent) 1px, transparent 1px);
     background-size: 22px 22px;
   }
+  #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  #zoombar {
+    position: absolute; right: 14px; bottom: 14px; z-index: 5;
+    display: flex; align-items: center; gap: 4px; padding: 4px;
+    border-radius: 12px; border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-sm);
+  }
+  #zoombar button { width: 30px; height: 30px; padding: 0; border-radius: 8px; }
+  #zoombar .pct {
+    min-width: 46px; text-align: center; font-size: 11.5px; font-weight: 700;
+    color: var(--muted); cursor: pointer; border: 0; background: none;
+    padding: 6px 4px; border-radius: 8px; box-shadow: none;
+  }
+  #zoombar .pct:hover { color: var(--accent); box-shadow: none; }
   #view svg {
-    max-width: 100%; height: auto;
+    height: auto;
     filter: drop-shadow(0 10px 28px rgba(20,23,42,.14));
     border-radius: 12px;
   }
@@ -301,7 +317,15 @@
       </svg>
     </button>
   </div>
-  <div id="view"></div>
+  <div id="view">
+    <div id="stage"></div>
+    <div id="zoombar">
+      <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+      <button id="zoom-pct" class="pct" title="Reset to 100%">100%</button>
+      <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button id="zoom-fit" title="Fit diagram to view" aria-label="Fit diagram to view">Fit</button>
+    </div>
+  </div>
 </main>
 <div id="error"></div>
 <footer>
@@ -418,7 +442,55 @@ const EXAMPLES = {
 
 const editor = document.getElementById("editor");
 const view = document.getElementById("view");
+const stage = document.getElementById("stage");
 const errBox = document.getElementById("error");
+
+// ── Camera (Figma-style pan & zoom over the whole canvas) ──
+const cam = { x: 0, y: 0, z: 1 };
+const Z_MIN = 0.2, Z_MAX = 8;
+
+function applyCam() {
+  stage.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`;
+  document.getElementById("zoom-pct").textContent = Math.round(cam.z * 100) + "%";
+}
+
+// Zoom keeping the world point under viewport coords (cx, cy) fixed.
+function zoomAt(cx, cy, factor) {
+  const z2 = Math.min(Z_MAX, Math.max(Z_MIN, cam.z * factor));
+  const k = z2 / cam.z;
+  cam.x = cx - (cx - cam.x) * k;
+  cam.y = cy - (cy - cam.y) * k;
+  cam.z = z2;
+  applyCam();
+}
+
+// Fit the current diagram inside the viewport with a little margin.
+function fitView(zCap = 1.5) {
+  const svg = stage.querySelector("svg");
+  if (!svg) return;
+  const w = parseFloat(svg.getAttribute("width")) || svg.viewBox.baseVal.width;
+  const h = parseFloat(svg.getAttribute("height")) || svg.viewBox.baseVal.height;
+  if (!(w > 0 && h > 0)) return;
+  const vr = view.getBoundingClientRect();
+  cam.z = Math.min(Z_MAX, Math.max(Z_MIN, Math.min((vr.width - 56) / w, (vr.height - 56) / h, zCap)));
+  cam.x = (vr.width - w * cam.z) / 2;
+  cam.y = (vr.height - h * cam.z) / 2;
+  applyCam();
+}
+
+view.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const vr = view.getBoundingClientRect();
+  const cx = e.clientX - vr.left, cy = e.clientY - vr.top;
+  if (e.ctrlKey || e.metaKey) {
+    // Trackpad pinch reports as wheel + ctrlKey.
+    zoomAt(cx, cy, Math.exp(-e.deltaY * 0.0025));
+  } else {
+    cam.x -= e.deltaX;
+    cam.y -= e.deltaY;
+    applyCam();
+  }
+}, { passive: false });
 
 // Last good document — the drag/render state. Mirrors the desktop
 // app: half-typed text keeps the previous diagram interactive, and
@@ -527,17 +599,18 @@ function render() {
   if (!good) return;
   if (isAdvance(good.src)) {
     const { lanes, margin, gap } = good.advance;
-    view.innerHTML = render_advance_routed_with_lanes(
+    stage.innerHTML = render_advance_routed_with_lanes(
       good.src,
       advanceAbsPos(),
       new Float64Array(lanes.map((l) => l.w)),
       margin,
       gap
     );
-    addLaneSeparators(view.querySelector("svg"));
+    addLaneSeparators(stage.querySelector("svg"));
   } else {
-    view.innerHTML = render_routed(good.src, new Float64Array(good.pos));
+    stage.innerHTML = render_routed(good.src, new Float64Array(good.pos));
   }
+  applyCam();
 }
 
 let raf = 0;
@@ -550,6 +623,9 @@ function scheduleRender() {
 //    re-route. ──
 let drag = null; // { i, cx, cy }
 let laneDrag = null; // { i, cx }
+let pan = null; // { sx, sy, cx, cy }
+const activePtrs = new Map(); // pointerId -> {x, y} for pinch
+let pinch = null; // { d0, z0, mx0, my0, camx0, camy0 }
 
 function svgScale() {
   const svg = view.querySelector("svg");
@@ -588,6 +664,23 @@ function hitLaneBorder(ev) {
 }
 
 view.addEventListener("pointerdown", (ev) => {
+  activePtrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  if (activePtrs.size === 2) {
+    // Second finger/mouse lands: switch to pinch, cancel other gestures.
+    drag = null; laneDrag = null; pan = null;
+    const [p1, p2] = [...activePtrs.values()];
+    const vr = view.getBoundingClientRect();
+    pinch = {
+      d0: Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1,
+      z0: cam.z,
+      mx0: (p1.x + p2.x) / 2 - vr.left,
+      my0: (p1.y + p2.y) / 2 - vr.top,
+      camx0: cam.x, camy0: cam.y,
+    };
+    view.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+    return;
+  }
   const li = hitLaneBorder(ev);
   if (li >= 0) {
     laneDrag = { i: li, cx: ev.clientX };
@@ -597,7 +690,14 @@ view.addEventListener("pointerdown", (ev) => {
     return;
   }
   const i = hitNode(ev);
-  if (i < 0) return;
+  if (i < 0) {
+    // Empty canvas: Figma-style pan.
+    pan = { sx: ev.clientX, sy: ev.clientY, cx: cam.x, cy: cam.y };
+    view.setPointerCapture(ev.pointerId);
+    view.style.cursor = "grabbing";
+    ev.preventDefault();
+    return;
+  }
   drag = { i, cx: ev.clientX, cy: ev.clientY };
   view.setPointerCapture(ev.pointerId);
   view.style.cursor = "grabbing";
@@ -605,6 +705,20 @@ view.addEventListener("pointerdown", (ev) => {
 });
 
 view.addEventListener("pointermove", (ev) => {
+  if (activePtrs.has(ev.pointerId)) activePtrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  if (pinch && activePtrs.size >= 2) {
+    const [p1, p2] = [...activePtrs.values()];
+    const d = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+    const vr = view.getBoundingClientRect();
+    const mx = (p1.x + p2.x) / 2 - vr.left, my = (p1.y + p2.y) / 2 - vr.top;
+    const z2 = Math.min(Z_MAX, Math.max(Z_MIN, pinch.z0 * (d / pinch.d0)));
+    const k = z2 / pinch.z0;
+    cam.x = mx - (mx - pinch.camx0) * k + (mx - pinch.mx0);
+    cam.y = my - (my - pinch.camy0) * k + (my - pinch.my0);
+    cam.z = z2;
+    applyCam();
+    return;
+  }
   if (laneDrag) {
     const s = svgScale();
     if (!s) return;
@@ -612,6 +726,12 @@ view.addEventListener("pointermove", (ev) => {
     good.advance.lanes[laneDrag.i].w = Math.max(80, good.advance.lanes[laneDrag.i].w + dx);
     laneDrag.cx = ev.clientX;
     scheduleRender();
+    return;
+  }
+  if (pan) {
+    cam.x = pan.cx + (ev.clientX - pan.sx);
+    cam.y = pan.cy + (ev.clientY - pan.sy);
+    applyCam();
     return;
   }
   if (!drag) {
@@ -629,12 +749,31 @@ view.addEventListener("pointermove", (ev) => {
 });
 
 for (const t of ["pointerup", "pointercancel"]) {
-  view.addEventListener(t, () => {
+  view.addEventListener(t, (ev) => {
+    activePtrs.delete(ev.pointerId);
+    if (activePtrs.size < 2) pinch = null;
     drag = null;
     laneDrag = null;
+    pan = null;
     view.style.cursor = "default";
   });
 }
+
+// ── Zoom toolbar ──
+document.getElementById("zoombar").addEventListener("pointerdown", (e) => e.stopPropagation());
+document.getElementById("zoom-in").addEventListener("click", () => {
+  const vr = view.getBoundingClientRect();
+  zoomAt(vr.width / 2, vr.height / 2, 1.25);
+});
+document.getElementById("zoom-out").addEventListener("click", () => {
+  const vr = view.getBoundingClientRect();
+  zoomAt(vr.width / 2, vr.height / 2, 1 / 1.25);
+});
+document.getElementById("zoom-fit").addEventListener("click", () => fitView());
+document.getElementById("zoom-pct").addEventListener("click", () => fitView(1));
+view.addEventListener("dblclick", (e) => {
+  if (hitNode(e) < 0) fitView();
+});
 
 // ── Code panel visibility ──
 const toggleEditorBtn = document.getElementById("toggle-editor");
@@ -671,6 +810,7 @@ function applyExample(value) {
   editor.value = EXAMPLES[value];
   good = null; // fresh example, fresh layout
   rebuild(editor.value);
+  fitView();
 }
 
 const dd = document.getElementById("examples-dd");
@@ -753,6 +893,7 @@ document.getElementById("version").textContent =
   `engine v${engine_version()} · wasm`;
 editor.value = EXAMPLES.flow;
 rebuild(editor.value);
+fitView();
 </script>
 </body>
 </html>
