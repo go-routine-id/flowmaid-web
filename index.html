@@ -19,63 +19,165 @@
 </script>
 <style>
   :root {
-    --ink: #232840; --line: #d5d9ec; --accent: #5b6dc0; --bg: #f6f7fc;
-    --err: #e03131; --card: #ffffff; --muted: #6a7086;
-    --err-bg: #fff0f0; --err-line: #ffd7d7;
+    --ink: #232840; --ink-strong: #14172a; --line: #dde2f3; --accent: #5468c7;
+    --accent-2: #199a8e; --accent-glow: rgba(84,104,199,.28);
+    --bg: #eef1fb; --card: #ffffff; --panel: #fbfcff;
+    --muted: #697089;
+    --err: #d13438; --err-bg: #fff2f2; --err-line: #ffdbdb;
+    --shadow-sm: 0 1px 2px rgba(20,23,42,.06), 0 2px 10px rgba(20,23,42,.06);
+    --shadow-md: 0 2px 6px rgba(20,23,42,.07), 0 14px 34px rgba(20,23,42,.10);
     color-scheme: light;
   }
   :root[data-theme="dark"] {
-    --ink: #dfe3f2; --line: #31374f; --accent: #8b9aec; --bg: #14161e;
-    --err: #ff7b7b; --card: #1b1e2b; --muted: #9298b0;
-    --err-bg: #2a1a1e; --err-line: #55303a;
+    --ink: #dee3f4; --ink-strong: #ffffff; --line: #2c3350; --accent: #93a2ef;
+    --accent-2: #34c8ba; --accent-glow: rgba(147,162,239,.22);
+    --bg: #12141d; --card: #191d2b; --panel: #151927;
+    --muted: #9098b4;
+    --err: #ff8787; --err-bg: #2b1a20; --err-line: #573240;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.35), 0 2px 10px rgba(0,0,0,.30);
+    --shadow-md: 0 2px 6px rgba(0,0,0,.40), 0 18px 40px rgba(0,0,0,.45);
     color-scheme: dark;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --ink: #dfe3f2; --line: #31374f; --accent: #8b9aec; --bg: #14161e;
-      --err: #ff7b7b; --card: #1b1e2b; --muted: #9298b0;
-      --err-bg: #2a1a1e; --err-line: #55303a;
+      --ink: #dee3f4; --ink-strong: #ffffff; --line: #2c3350; --accent: #93a2ef;
+      --accent-2: #34c8ba; --accent-glow: rgba(147,162,239,.22);
+      --bg: #12141d; --card: #191d2b; --panel: #151927;
+      --muted: #9098b4;
+      --err: #ff8787; --err-bg: #2b1a20; --err-line: #573240;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.35), 0 2px 10px rgba(0,0,0,.30);
+      --shadow-md: 0 2px 6px rgba(0,0,0,.40), 0 18px 40px rgba(0,0,0,.45);
       color-scheme: dark;
     }
   }
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
-    margin: 0; font-family: Helvetica, Arial, sans-serif; color: var(--ink);
-    display: flex; flex-direction: column; height: 100vh; background: var(--bg);
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px; color: var(--ink);
+    display: flex; flex-direction: column; height: 100vh;
+    background:
+      radial-gradient(900px 480px at 88% -12%, var(--accent-glow), transparent 62%),
+      radial-gradient(720px 420px at -8% 112%, rgba(31,166,153,.14), transparent 58%),
+      var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent); color: #fff; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--line) 80%, var(--muted));
+    border-radius: 999px; border: 3px solid transparent; background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  header, footer {
+    background: color-mix(in srgb, var(--card) 82%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(1.5);
+    backdrop-filter: blur(14px) saturate(1.5);
   }
   header {
-    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
-    background: var(--card); border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 10px; padding: 11px 18px;
+    border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow-sm);
+    z-index: 1;
   }
-  header h1 { font-size: 18px; margin: 0; color: var(--accent); }
-  header .sub { font-size: 12px; color: var(--muted); }
+  header h1 {
+    font-size: 19px; margin: 0; letter-spacing: -.02em; font-weight: 800;
+    background: linear-gradient(96deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  header h1::after {
+    content: ""; display: inline-block; width: 7px; height: 7px;
+    margin-left: 7px; border-radius: 50%;
+    background: radial-gradient(circle at 32% 32%, var(--accent-2), var(--accent));
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  header .sub { font-size: 12.5px; color: var(--muted); letter-spacing: -.005em; }
   header .spacer { flex: 1; }
-  button, select {
-    font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px;
-    border: 1px solid var(--line); background: var(--card); color: var(--ink);
-    cursor: pointer;
+  header > a {
+    font-size: 13px; font-weight: 600; color: var(--accent);
+    text-decoration: none; padding: 6px 10px; border-radius: 8px;
+    transition: background-color .15s ease;
   }
-  button:hover { border-color: var(--accent); color: var(--accent); }
+  header > a:hover { background: var(--accent-glow); }
+
+  button, select {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 7px 13px;
+    border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: border-color .15s ease, box-shadow .15s ease,
+                transform .12s ease, background-color .15s ease, color .15s ease;
+  }
+  button:hover, select:hover {
+    border-color: var(--accent); color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-glow);
+  }
+  button:active, select:active { transform: scale(.97); }
+  button:focus-visible, select:focus-visible, header > a:focus-visible,
+  #editor:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  #download {
+    background: linear-gradient(96deg, var(--accent), var(--accent-2));
+    border-color: transparent; color: #fff;
+  }
+  #download:hover { color: #fff; filter: brightness(1.06); }
+
   main { display: flex; flex: 1; min-height: 0; }
   #editor {
     width: 38%; min-width: 280px; border: 0; border-right: 1px solid var(--line);
-    padding: 14px; font: 13px/1.5 ui-monospace, Menlo, monospace; resize: none;
-    outline: none; color: var(--ink); background: var(--card);
+    padding: 16px 18px; font: 500 13px/1.65 ui-monospace, Menlo, monospace;
+    resize: none; outline: none; color: var(--ink);
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    caret-color: var(--accent);
   }
   #view {
-    flex: 1; overflow: auto; display: grid; place-items: center; padding: 20px;
+    flex: 1; overflow: auto; display: grid; place-items: center; padding: 26px;
     touch-action: none; /* pointer-drag nodes on touch screens too */
+    background-image: radial-gradient(
+      color-mix(in srgb, var(--line) 66%, transparent) 1px, transparent 1px);
+    background-size: 22px 22px;
   }
-  #view svg { max-width: 100%; height: auto; box-shadow: 0 2px 14px rgba(35,40,64,.08); border-radius: 8px; }
+  #view svg {
+    max-width: 100%; height: auto;
+    filter: drop-shadow(0 10px 28px rgba(20,23,42,.14));
+    border-radius: 12px;
+  }
+  :root[data-theme="dark"] #view svg { filter: drop-shadow(0 12px 30px rgba(0,0,0,.55)); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #view svg {
+      filter: drop-shadow(0 12px 30px rgba(0,0,0,.55));
+    }
+  }
+
   #error {
-    display: none; padding: 8px 16px; font-size: 13px; color: var(--err);
-    background: var(--err-bg); border-top: 1px solid var(--err-line);
+    display: none; margin: 0 18px 12px; padding: 11px 18px;
+    font-size: 13px; font-weight: 500; color: var(--err);
+    background: var(--err-bg); border: 1px solid var(--err-line);
+    border-radius: 12px; box-shadow: var(--shadow-md);
   }
   footer {
-    padding: 6px 16px; font-size: 12px; color: var(--muted); background: var(--card);
-    border-top: 1px solid var(--line); display: flex; gap: 14px;
+    padding: 7px 18px; font-size: 12px; color: var(--muted);
+    border-top: 1px solid var(--line);
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
   }
-  footer a { color: var(--accent); text-decoration: none; }
+  footer #version {
+    padding: 2px 10px; border-radius: 999px; font-weight: 600;
+    border: 1px solid var(--line); color: var(--accent);
+  }
+  footer a {
+    color: var(--muted); text-decoration: none; padding: 3px 8px;
+    border-radius: 8px; transition: color .15s ease, background-color .15s ease;
+  }
+  footer a:hover { color: var(--accent); background: var(--accent-glow); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+    html { scroll-behavior: auto; }
+  }
 </style>
 </head>
 <body>
@@ -83,7 +185,7 @@
   <h1>flowmaid</h1>
   <span class="sub">Mermaid-like diagrams, rendered by pure Rust in your browser — drag the nodes!</span>
   <span class="spacer"></span>
-  <a href="/flowmaid/docs/" style="font-size:13px;color:var(--accent);text-decoration:none;padding:6px 4px;">Docs</a>
+  <a href="/flowmaid/docs/">Docs</a>
   <button id="theme" title="Toggle dark mode" onclick="toggleTheme()">🌓</button>
   <select id="examples">
     <option value="flow">Example: Flowchart</option>
