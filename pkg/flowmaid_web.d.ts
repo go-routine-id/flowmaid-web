@@ -15,6 +15,14 @@ export function auto_positions(source: string): Float64Array;
 export function engine_version(): string;
 
 /**
+ * Layout an advance / swimlane diagram from JSON and return its
+ * geometry as a JSON string: width, height, lanes, nodes, and edges
+ * with orthogonal routing points. Serialised by hand so no serde
+ * dependency is added to the wasm bundle.
+ */
+export function layout_advance_json(source: string): string;
+
+/**
  * Identity key per node (flowchart node id / ER entity name),
  * newline-joined, in the same order as every array below. Used to
  * preserve dragged positions across text edits.
@@ -26,6 +34,27 @@ export function node_keys(source: string): string;
  * the host can hit-test drags with centres + these.
  */
 export function node_sizes(source: string): Float64Array;
+
+/**
+ * Render an advance / swimlane diagram from JSON with caller-provided
+ * node centre positions (flat `[x, y]` pairs in the same order as
+ * [`layout_advance_json`]'s `nodes` array). Edges are re-routed and
+ * lane boxes are recomputed around the dragged nodes.
+ */
+export function render_advance_routed(source: string, positions: Float64Array): string;
+
+/**
+ * Render an advance / swimlane diagram from JSON with caller-provided
+ * node centre positions and explicit lane widths (in the same order as
+ * the `lanes` array). Margin and gap are also supplied by the host so
+ * the lane background resizes with dragged column borders.
+ */
+export function render_advance_routed_with_lanes(source: string, positions: Float64Array, lane_widths: Float64Array, margin: number, gap: number): string;
+
+/**
+ * Render an advance / swimlane diagram from JSON to an SVG string.
+ */
+export function render_advance_svg(source: string): string;
 
 /**
  * Render with caller-provided centres (flat `[x, y]` pairs, same
@@ -49,8 +78,12 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly auto_positions: (a: number, b: number) => [number, number, number, number];
     readonly engine_version: () => [number, number];
+    readonly layout_advance_json: (a: number, b: number) => [number, number, number, number];
     readonly node_keys: (a: number, b: number) => [number, number, number, number];
     readonly node_sizes: (a: number, b: number) => [number, number, number, number];
+    readonly render_advance_routed: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly render_advance_routed_with_lanes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
+    readonly render_advance_svg: (a: number, b: number) => [number, number, number, number];
     readonly render_routed: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly render_svg: (a: number, b: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;

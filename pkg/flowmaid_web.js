@@ -38,6 +38,35 @@ export function engine_version() {
 }
 
 /**
+ * Layout an advance / swimlane diagram from JSON and return its
+ * geometry as a JSON string: width, height, lanes, nodes, and edges
+ * with orthogonal routing points. Serialised by hand so no serde
+ * dependency is added to the wasm bundle.
+ * @param {string} source
+ * @returns {string}
+ */
+export function layout_advance_json(source) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.layout_advance_json(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
  * Identity key per node (flowchart node id / ER entity name),
  * newline-joined, in the same order as every array below. Used to
  * preserve dragged positions across text edits.
@@ -81,6 +110,101 @@ export function node_sizes(source) {
     var v2 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
     wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
     return v2;
+}
+
+/**
+ * Render an advance / swimlane diagram from JSON with caller-provided
+ * node centre positions (flat `[x, y]` pairs in the same order as
+ * [`layout_advance_json`]'s `nodes` array). Edges are re-routed and
+ * lane boxes are recomputed around the dragged nodes.
+ * @param {string} source
+ * @param {Float64Array} positions
+ * @returns {string}
+ */
+export function render_advance_routed(source, positions) {
+    let deferred4_0;
+    let deferred4_1;
+    try {
+        const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(positions, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.render_advance_routed(ptr0, len0, ptr1, len1);
+        var ptr3 = ret[0];
+        var len3 = ret[1];
+        if (ret[3]) {
+            ptr3 = 0; len3 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred4_0 = ptr3;
+        deferred4_1 = len3;
+        return getStringFromWasm0(ptr3, len3);
+    } finally {
+        wasm.__wbindgen_free(deferred4_0, deferred4_1, 1);
+    }
+}
+
+/**
+ * Render an advance / swimlane diagram from JSON with caller-provided
+ * node centre positions and explicit lane widths (in the same order as
+ * the `lanes` array). Margin and gap are also supplied by the host so
+ * the lane background resizes with dragged column borders.
+ * @param {string} source
+ * @param {Float64Array} positions
+ * @param {Float64Array} lane_widths
+ * @param {number} margin
+ * @param {number} gap
+ * @returns {string}
+ */
+export function render_advance_routed_with_lanes(source, positions, lane_widths, margin, gap) {
+    let deferred5_0;
+    let deferred5_1;
+    try {
+        const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passArrayF64ToWasm0(positions, wasm.__wbindgen_malloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ptr2 = passArrayF64ToWasm0(lane_widths, wasm.__wbindgen_malloc);
+        const len2 = WASM_VECTOR_LEN;
+        const ret = wasm.render_advance_routed_with_lanes(ptr0, len0, ptr1, len1, ptr2, len2, margin, gap);
+        var ptr4 = ret[0];
+        var len4 = ret[1];
+        if (ret[3]) {
+            ptr4 = 0; len4 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred5_0 = ptr4;
+        deferred5_1 = len4;
+        return getStringFromWasm0(ptr4, len4);
+    } finally {
+        wasm.__wbindgen_free(deferred5_0, deferred5_1, 1);
+    }
+}
+
+/**
+ * Render an advance / swimlane diagram from JSON to an SVG string.
+ * @param {string} source
+ * @returns {string}
+ */
+export function render_advance_svg(source) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(source, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.render_advance_svg(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
 }
 
 /**

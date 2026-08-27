@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>flowmaid playground</title>
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="%235468c7"/><stop offset="1" stop-color="%23199a8e"/></linearGradient></defs><rect x="2" y="2" width="28" height="28" rx="8" fill="url(%23g)"/><circle cx="11" cy="16" r="3.4" fill="white" fill-opacity=".95"/><circle cx="21" cy="16" r="3.4" fill="white" fill-opacity=".55"/></svg>'>
 <script>
   (function () {
     var t = localStorage.getItem("theme");
@@ -19,63 +20,266 @@
 </script>
 <style>
   :root {
-    --ink: #232840; --line: #d5d9ec; --accent: #5b6dc0; --bg: #f6f7fc;
-    --err: #e03131; --card: #ffffff; --muted: #6a7086;
-    --err-bg: #fff0f0; --err-line: #ffd7d7;
+    --ink: #232840; --ink-strong: #14172a; --line: #dde2f3; --accent: #5468c7;
+    --accent-2: #199a8e; --accent-glow: rgba(84,104,199,.28);
+    --bg: #eef1fb; --card: #ffffff; --panel: #fbfcff;
+    --muted: #697089;
+    --err: #d13438; --err-bg: #fff2f2; --err-line: #ffdbdb;
+    --shadow-sm: 0 1px 2px rgba(20,23,42,.06), 0 2px 10px rgba(20,23,42,.06);
+    --shadow-md: 0 2px 6px rgba(20,23,42,.07), 0 14px 34px rgba(20,23,42,.10);
     color-scheme: light;
   }
   :root[data-theme="dark"] {
-    --ink: #dfe3f2; --line: #31374f; --accent: #8b9aec; --bg: #14161e;
-    --err: #ff7b7b; --card: #1b1e2b; --muted: #9298b0;
-    --err-bg: #2a1a1e; --err-line: #55303a;
+    --ink: #dee3f4; --ink-strong: #ffffff; --line: #2c3350; --accent: #93a2ef;
+    --accent-2: #34c8ba; --accent-glow: rgba(147,162,239,.22);
+    --bg: #12141d; --card: #191d2b; --panel: #151927;
+    --muted: #9098b4;
+    --err: #ff8787; --err-bg: #2b1a20; --err-line: #573240;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.35), 0 2px 10px rgba(0,0,0,.30);
+    --shadow-md: 0 2px 6px rgba(0,0,0,.40), 0 18px 40px rgba(0,0,0,.45);
     color-scheme: dark;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --ink: #dfe3f2; --line: #31374f; --accent: #8b9aec; --bg: #14161e;
-      --err: #ff7b7b; --card: #1b1e2b; --muted: #9298b0;
-      --err-bg: #2a1a1e; --err-line: #55303a;
+      --ink: #dee3f4; --ink-strong: #ffffff; --line: #2c3350; --accent: #93a2ef;
+      --accent-2: #34c8ba; --accent-glow: rgba(147,162,239,.22);
+      --bg: #12141d; --card: #191d2b; --panel: #151927;
+      --muted: #9098b4;
+      --err: #ff8787; --err-bg: #2b1a20; --err-line: #573240;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,.35), 0 2px 10px rgba(0,0,0,.30);
+      --shadow-md: 0 2px 6px rgba(0,0,0,.40), 0 18px 40px rgba(0,0,0,.45);
       color-scheme: dark;
     }
   }
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   body {
-    margin: 0; font-family: Helvetica, Arial, sans-serif; color: var(--ink);
-    display: flex; flex-direction: column; height: 100vh; background: var(--bg);
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px; color: var(--ink);
+    display: flex; flex-direction: column; height: 100vh; height: 100dvh;
+    background:
+      radial-gradient(900px 480px at 88% -12%, var(--accent-glow), transparent 62%),
+      radial-gradient(720px 420px at -8% 112%, rgba(31,166,153,.14), transparent 58%),
+      var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--accent); color: #fff; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--line) 80%, var(--muted));
+    border-radius: 999px; border: 3px solid transparent; background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  header, footer {
+    background: color-mix(in srgb, var(--card) 82%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(1.5);
+    backdrop-filter: blur(14px) saturate(1.5);
   }
   header {
-    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
-    background: var(--card); border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 10px; padding: 11px 18px;
+    border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow-sm);
+    z-index: 1;
   }
-  header h1 { font-size: 18px; margin: 0; color: var(--accent); }
-  header .sub { font-size: 12px; color: var(--muted); }
+  header h1 {
+    font-size: 19px; margin: 0; letter-spacing: -.02em; font-weight: 800;
+    color: var(--accent);
+  }
+  header h1::after {
+    content: ""; display: inline-block; width: 7px; height: 7px;
+    margin-left: 7px; border-radius: 50%;
+    background: radial-gradient(circle at 32% 32%, var(--accent-2), var(--accent));
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  header .sub { font-size: 12.5px; color: var(--muted); letter-spacing: -.005em; }
   header .spacer { flex: 1; }
-  button, select {
-    font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 6px;
-    border: 1px solid var(--line); background: var(--card); color: var(--ink);
-    cursor: pointer;
+  header > a {
+    font-size: 13px; font-weight: 600; color: var(--accent);
+    text-decoration: none; padding: 6px 10px; border-radius: 8px;
+    transition: background-color .15s ease;
   }
-  button:hover { border-color: var(--accent); color: var(--accent); }
-  main { display: flex; flex: 1; min-height: 0; }
+  header > a:hover { background: var(--accent-glow); }
+
+  button, select {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 7px 13px;
+    border-radius: 10px; border: 1px solid var(--line);
+    background: var(--card); color: var(--ink); cursor: pointer;
+    box-shadow: var(--shadow-sm);
+    transition: border-color .15s ease, box-shadow .15s ease,
+                transform .12s ease, background-color .15s ease, color .15s ease;
+  }
+  button:hover, select:hover {
+    border-color: var(--accent); color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-glow);
+  }
+  button:active, select:active { transform: scale(.97); }
+  button:focus-visible, select:focus-visible, header > a:focus-visible,
+  #editor:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  #download {
+    background: linear-gradient(96deg, var(--accent), var(--accent-2));
+    border-color: transparent; color: #fff;
+  }
+  #download:hover { color: #fff; filter: brightness(1.06); }
+  body.editor-hidden #editor { display: none; }
+  #toggle-editor[aria-pressed="false"] { color: var(--muted); border-style: dashed; }
+
+  /* ── Collapse handle riding the editor/view divider ── */
+  .seam-anchor { position: relative; width: 0; flex: none; }
+  .collapse-handle {
+    position: absolute; top: 50%; left: -13px;
+    margin-top: -27px; /* static centering — no transform, ever */
+    width: 26px; height: 54px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 9px; z-index: 4;
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    transition: background-color .15s ease, box-shadow .15s ease,
+                border-color .15s ease;
+  }
+  .collapse-handle:hover {
+    background: var(--card); border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-glow), var(--shadow-md);
+  }
+  .collapse-handle svg { width: 14px; height: 14px; }
+  body.editor-hidden .collapse-handle { left: 12px; }
+  body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
+  body.editor-hidden .collapse-handle { left: 12px; }
+  body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
+
+  main { display: flex; flex: 1; min-height: 0; position: relative; }
   #editor {
     width: 38%; min-width: 280px; border: 0; border-right: 1px solid var(--line);
-    padding: 14px; font: 13px/1.5 ui-monospace, Menlo, monospace; resize: none;
-    outline: none; color: var(--ink); background: var(--card);
+    padding: 16px 18px; font: 500 13px/1.65 ui-monospace, Menlo, monospace;
+    resize: none; outline: none; color: var(--ink);
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    caret-color: var(--accent);
   }
   #view {
-    flex: 1; overflow: auto; display: grid; place-items: center; padding: 20px;
+    flex: 1; overflow: hidden; position: relative; padding: 26px;
     touch-action: none; /* pointer-drag nodes on touch screens too */
+    background-image: radial-gradient(
+      color-mix(in srgb, var(--line) 66%, transparent) 1px, transparent 1px);
+    background-size: 22px 22px;
   }
-  #view svg { max-width: 100%; height: auto; box-shadow: 0 2px 14px rgba(35,40,64,.08); border-radius: 8px; }
+  #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  #zoombar {
+    position: absolute; right: 14px; bottom: 14px; z-index: 5;
+    display: flex; align-items: center; gap: 4px; padding: 4px;
+    border-radius: 12px; border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--card) 88%, transparent);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-sm);
+  }
+  #zoombar button { width: 30px; height: 30px; padding: 0; border-radius: 8px; }
+  #zoombar .pct {
+    min-width: 46px; text-align: center; font-size: 11.5px; font-weight: 700;
+    color: var(--muted); cursor: pointer; border: 0; background: none;
+    padding: 6px 4px; border-radius: 8px; box-shadow: none;
+  }
+  #zoombar .pct:hover { color: var(--accent); box-shadow: none; }
+  #view svg {
+    height: auto;
+    filter: drop-shadow(0 10px 28px rgba(20,23,42,.14));
+    border-radius: 12px;
+  }
+  :root[data-theme="dark"] #view svg { filter: drop-shadow(0 12px 30px rgba(0,0,0,.55)); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) #view svg {
+      filter: drop-shadow(0 12px 30px rgba(0,0,0,.55));
+    }
+  }
+
   #error {
-    display: none; padding: 8px 16px; font-size: 13px; color: var(--err);
-    background: var(--err-bg); border-top: 1px solid var(--err-line);
+    display: none; margin: 0 18px 12px; padding: 11px 18px;
+    font-size: 13px; font-weight: 500; color: var(--err);
+    background: var(--err-bg); border: 1px solid var(--err-line);
+    border-radius: 12px; box-shadow: var(--shadow-md);
   }
   footer {
-    padding: 6px 16px; font-size: 12px; color: var(--muted); background: var(--card);
-    border-top: 1px solid var(--line); display: flex; gap: 14px;
+    padding: 7px 18px; font-size: 12px; color: var(--muted);
+    border-top: 1px solid var(--line);
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
   }
-  footer a { color: var(--accent); text-decoration: none; }
+  footer #version {
+    padding: 2px 10px; border-radius: 999px; font-weight: 600;
+    border: 1px solid var(--line); color: var(--accent);
+  }
+  footer a {
+    color: var(--muted); text-decoration: none; padding: 3px 8px;
+    border-radius: 8px; transition: color .15s ease, background-color .15s ease;
+  }
+  footer a:hover { color: var(--accent); background: var(--accent-glow); }
+
+  /* ── Custom example dropdown ── */
+  header { flex-wrap: wrap; }
+  .dd { position: relative; z-index: 6; }
+  .dd-btn { display: inline-flex; align-items: center; gap: 8px; }
+  .dd-btn .chev {
+    width: 16px; height: 16px; flex: none;
+    transition: transform .18s ease; color: var(--muted);
+  }
+  .dd.open .chev { transform: rotate(180deg); color: var(--accent); }
+  .dd-menu {
+    position: absolute; top: calc(100% + 8px); right: 0;
+    margin: 0; padding: 6px; list-style: none; min-width: 230px;
+    max-height: 330px; max-width: min(86vw, 320px); overflow: auto;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; box-shadow: var(--shadow-md);
+    opacity: 0; transform: translateY(-6px); pointer-events: none;
+    transition: opacity .16s ease, transform .16s ease;
+  }
+  .dd.open .dd-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .dd-menu li {
+    display: flex; align-items: center; gap: 9px;
+    padding: 8px 11px; border-radius: 9px; font-size: 13px; font-weight: 500;
+    cursor: pointer; user-select: none;
+  }
+  .dd-menu li::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--line); transition: background-color .15s ease, transform .15s ease;
+  }
+  .dd-menu li:hover { background: var(--accent-glow); }
+  .dd-menu li[aria-selected="true"] {
+    color: var(--accent); font-weight: 700;
+    background: var(--accent-glow);
+  }
+  .dd-menu li[aria-selected="true"]::before {
+    background: linear-gradient(96deg, var(--accent), var(--accent-2));
+    transform: scale(1.25);
+  }
+  .dd-menu li[aria-current="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  /* ── Responsive ── */
+  @media (max-width: 860px) {
+    main { flex-direction: column; }
+    #editor {
+      order: 3; width: auto; min-width: 0;
+      height: 36vh; height: 36dvh; flex: none;
+      border-right: 0; border-top: 1px solid var(--line);
+      resize: vertical; /* drag the divider taller if needed */
+    }
+    #view { order: 1; flex: 1; min-height: 0; padding: 14px; background-size: 18px 18px; }
+
+    .seam-anchor { order: 2; height: 0; align-self: stretch; }
+    .collapse-handle { top: 0; margin-top: -27px; }
+    body.editor-hidden .collapse-handle { left: 12px; margin-top: -64px; }
+  }
+  @media (max-width: 720px) {
+    header { gap: 8px; padding: 10px 12px; }
+    header .sub { display: none; }
+    button, select, .dd-btn { font-size: 12.5px; padding: 6px 10px; border-radius: 9px; }
+    #error { margin: 0 10px 10px; padding: 10px 14px; }
+    footer { justify-content: center; gap: 4px; font-size: 11.5px; padding-inline: 10px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+    html { scroll-behavior: auto; }
+  }
 </style>
 </head>
 <body>
@@ -83,23 +287,45 @@
   <h1>flowmaid</h1>
   <span class="sub">Mermaid-like diagrams, rendered by pure Rust in your browser — drag the nodes!</span>
   <span class="spacer"></span>
-  <a href="/flowmaid/docs/" style="font-size:13px;color:var(--accent);text-decoration:none;padding:6px 4px;">Docs</a>
+  <a href="/flowmaid/docs/">Docs</a>
   <button id="theme" title="Toggle dark mode" onclick="toggleTheme()">🌓</button>
-  <select id="examples">
-    <option value="flow">Example: Flowchart</option>
-    <option value="styled">Example: Styled flowchart</option>
-    <option value="er">Example: ER diagram</option>
-    <option value="class">Example: Class diagram</option>
-    <option value="seq">Example: Sequence diagram</option>
-    <option value="pie">Example: Pie chart</option>
-    <option value="statechart">Example: State diagram</option>
-  </select>
+  <div class="dd" id="examples-dd">
+    <button id="examples-btn" class="dd-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="Example diagram">
+      <span id="examples-label">Flowchart</span>
+      <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6l4.5 4.5L12.5 6"/></svg>
+    </button>
+    <ul class="dd-menu" role="listbox" aria-label="Pick an example diagram">
+      <li role="option" data-value="flow" aria-selected="true">Flowchart</li>
+      <li role="option" data-value="styled">Styled flowchart</li>
+      <li role="option" data-value="er">ER diagram</li>
+      <li role="option" data-value="class">Class diagram</li>
+      <li role="option" data-value="seq">Sequence diagram</li>
+      <li role="option" data-value="pie">Pie chart</li>
+      <li role="option" data-value="statechart">State diagram</li>
+      <li role="option" data-value="advance">Swimlane (advance)</li>
+    </ul>
+  </div>
   <button id="relayout">Auto layout</button>
   <button id="download">Download SVG</button>
 </header>
 <main>
   <textarea id="editor" spellcheck="false"></textarea>
-  <div id="view"></div>
+  <div class="seam-anchor">
+    <button id="toggle-editor" class="collapse-handle" aria-pressed="true" title="Show / hide code panel" aria-label="Show / hide code panel">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M7.5 4L3.5 8l4 4"/><path d="M12.5 4L8.5 8l4 4"/>
+      </svg>
+    </button>
+  </div>
+  <div id="view">
+    <div id="stage"></div>
+    <div id="zoombar">
+      <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
+      <button id="zoom-pct" class="pct" title="Reset to 100%">100%</button>
+      <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
+      <button id="zoom-fit" title="Fit diagram to view" aria-label="Fit diagram to view">Fit</button>
+    </div>
+  </div>
 </main>
 <div id="error"></div>
 <footer>
@@ -114,6 +340,7 @@
 <script type="module">
 import init, {
   render_routed, node_keys, auto_positions, node_sizes, engine_version,
+  render_advance_svg, layout_advance_json, render_advance_routed_with_lanes,
 } from "./pkg/flowmaid_web.js";
 
 const EXAMPLES = {
@@ -194,11 +421,76 @@ const EXAMPLES = {
     decide --> Done : valid
     Rejected --> Idle : retry
     Done --> [*]`,
+  advance: `{
+  "lanes": [
+    {"id": "dev", "title": "Development"},
+    {"id": "qa", "title": "QA"}
+  ],
+  "nodes": [
+    {"id": "design", "label": "Design", "lane": "dev", "shape": "rect"},
+    {"id": "code", "label": "Code", "lane": "dev", "shape": "rounded"},
+    {"id": "test", "label": "Test", "lane": "qa", "shape": "diamond"},
+    {"id": "sign", "label": "Sign off", "lane": "qa", "shape": "stadium"}
+  ],
+  "edges": [
+    {"from": "design", "to": "code", "label": "implements"},
+    {"from": "code", "to": "test", "label": "hand over"},
+    {"from": "test", "to": "sign", "label": "approve"}
+  ]
+}`,
 };
 
 const editor = document.getElementById("editor");
 const view = document.getElementById("view");
+const stage = document.getElementById("stage");
 const errBox = document.getElementById("error");
+
+// ── Camera (Figma-style pan & zoom over the whole canvas) ──
+const cam = { x: 0, y: 0, z: 1 };
+const Z_MIN = 0.2, Z_MAX = 8;
+
+function applyCam() {
+  stage.style.transform = `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`;
+  document.getElementById("zoom-pct").textContent = Math.round(cam.z * 100) + "%";
+}
+
+// Zoom keeping the world point under viewport coords (cx, cy) fixed.
+function zoomAt(cx, cy, factor) {
+  const z2 = Math.min(Z_MAX, Math.max(Z_MIN, cam.z * factor));
+  const k = z2 / cam.z;
+  cam.x = cx - (cx - cam.x) * k;
+  cam.y = cy - (cy - cam.y) * k;
+  cam.z = z2;
+  applyCam();
+}
+
+// Fit the current diagram inside the viewport with a little margin.
+function fitView(zCap = 1.5) {
+  const svg = stage.querySelector("svg");
+  if (!svg) return;
+  const w = parseFloat(svg.getAttribute("width")) || svg.viewBox.baseVal.width;
+  const h = parseFloat(svg.getAttribute("height")) || svg.viewBox.baseVal.height;
+  if (!(w > 0 && h > 0)) return;
+  const vr = view.getBoundingClientRect();
+  cam.z = Math.min(Z_MAX, Math.max(Z_MIN, Math.min((vr.width - 56) / w, (vr.height - 56) / h, zCap)));
+  cam.x = (vr.width - w * cam.z) / 2;
+  cam.y = (vr.height - h * cam.z) / 2;
+  applyCam();
+}
+
+view.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const vr = view.getBoundingClientRect();
+  const cx = e.clientX - vr.left, cy = e.clientY - vr.top;
+  if (e.ctrlKey || e.metaKey) {
+    // Trackpad pinch reports as wheel + ctrlKey.
+    zoomAt(cx, cy, Math.exp(-e.deltaY * 0.0025));
+  } else {
+    cam.x -= e.deltaX;
+    cam.y -= e.deltaY;
+    applyCam();
+  }
+}, { passive: false });
 
 // Last good document — the drag/render state. Mirrors the desktop
 // app: half-typed text keeps the previous diagram interactive, and
@@ -209,8 +501,45 @@ let good = null; // { src, keys: string[], pos: number[], sizes: number[] }
 // which contribute no keys) and back. Found by a bug hunt.
 const savedPos = new Map();
 
+// Advance / swimlane diagrams use JSON input instead of Mermaid syntax.
+function isAdvance(src) {
+  return src.trim().startsWith("{");
+}
+
 function rebuild(src) {
   try {
+    // Positions semantics differ between advance (offset-x + y) and
+    // other diagrams (absolute centres), so drop remembered drags when
+    // switching diagram types.
+    if (good && isAdvance(src) !== isAdvance(good.src)) {
+      savedPos.clear();
+    }
+    // Advance diagrams are self-contained JSON: seed drag state from
+    // layout_advance_json, then render via the routed renderer so nodes
+    // can be dragged just like flowcharts.
+    if (isAdvance(src)) {
+      const layout = JSON.parse(layout_advance_json(src));
+      const nodes = layout.nodes;
+      const keys = nodes.map((n) => n.id);
+      const sizes = nodes.flatMap((n) => [n.w, n.h]);
+      const laneIndex = Object.fromEntries(layout.lanes.map((l, i) => [l.id, i]));
+      const nodeLanes = nodes.map((n) => laneIndex[n.lane]);
+      const margin = layout.lanes[0]?.x ?? 24;
+      const gap = layout.lanes.length > 1
+        ? layout.lanes[1].x - (layout.lanes[0].x + layout.lanes[0].w)
+        : 40;
+      const lanes = layout.lanes.map((l) => ({ id: l.id, w: l.w }));
+      if (good) {
+        good.keys.forEach((k, i) =>
+          savedPos.set(k, [good.pos[i * 2], good.pos[i * 2 + 1]])
+        );
+      }
+      const pos = nodes.flatMap((n, i) => savedPos.get(keys[i]) ?? [0, n.y]);
+      good = { src, keys, pos, sizes, advance: { lanes, margin, gap, nodeLanes } };
+      errBox.style.display = "none";
+      render();
+      return;
+    }
     const keys = node_keys(src).split("\n").filter(Boolean);
     const auto = Array.from(auto_positions(src));
     const sizes = Array.from(node_sizes(src));
@@ -229,9 +558,59 @@ function rebuild(src) {
   }
 }
 
+function advanceAbsPos() {
+  if (!good?.advance) return [];
+  const { lanes, margin, gap, nodeLanes } = good.advance;
+  const abs = new Float64Array(good.pos.length);
+  for (let i = 0; i < good.keys.length; i++) {
+    let lx = margin;
+    const li = nodeLanes[i];
+    for (let j = 0; j < li; j++) lx += lanes[j].w + gap;
+    abs[i * 2] = lx + lanes[li].w / 2 + good.pos[i * 2];
+    abs[i * 2 + 1] = good.pos[i * 2 + 1];
+  }
+  return abs;
+}
+
+function addLaneSeparators(svg) {
+  if (!good?.advance || !svg) return;
+  const ns = "http://www.w3.org/2000/svg";
+  const { lanes, margin } = good.advance;
+  const vb = svg.viewBox.baseVal;
+  let lx = margin;
+  for (let i = 0; i < lanes.length; i++) {
+    lx += lanes[i].w;
+    const x = lx;
+    const line = document.createElementNS(ns, "line");
+    line.setAttribute("x1", x);
+    line.setAttribute("y1", margin);
+    line.setAttribute("x2", x);
+    line.setAttribute("y2", vb.height - margin);
+    line.setAttribute("stroke-width", "2");
+    line.setAttribute("stroke-dasharray", "4 3");
+    line.setAttribute("opacity", "0.55");
+    line.style.stroke = "var(--line)";
+    line.style.pointerEvents = "none";
+    svg.appendChild(line);
+  }
+}
+
 function render() {
   if (!good) return;
-  view.innerHTML = render_routed(good.src, new Float64Array(good.pos));
+  if (isAdvance(good.src)) {
+    const { lanes, margin, gap } = good.advance;
+    stage.innerHTML = render_advance_routed_with_lanes(
+      good.src,
+      advanceAbsPos(),
+      new Float64Array(lanes.map((l) => l.w)),
+      margin,
+      gap
+    );
+    addLaneSeparators(stage.querySelector("svg"));
+  } else {
+    stage.innerHTML = render_routed(good.src, new Float64Array(good.pos));
+  }
+  applyCam();
 }
 
 let raf = 0;
@@ -239,9 +618,14 @@ function scheduleRender() {
   if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); });
 }
 
-// ── Drag & drop, desktop-style: hit-test on node boxes, apply
-//    pointer deltas in world units, let the engine re-route. ──
+// ── Drag & drop, desktop-style: hit-test on node boxes and lane
+//    borders, apply pointer deltas in world units, let the engine
+//    re-route. ──
 let drag = null; // { i, cx, cy }
+let laneDrag = null; // { i, cx }
+let pan = null; // { sx, sy, cx, cy }
+const activePtrs = new Map(); // pointerId -> {x, y} for pinch
+let pinch = null; // { d0, z0, mx0, my0, camx0, camy0 }
 
 function svgScale() {
   const svg = view.querySelector("svg");
@@ -256,17 +640,64 @@ function hitNode(ev) {
   if (!s || !good) return -1;
   const x = (ev.clientX - s.r.left) * s.sx;
   const y = (ev.clientY - s.r.top) * s.sy;
+  const abs = isAdvance(good.src) ? advanceAbsPos() : good.pos;
   for (let i = good.keys.length - 1; i >= 0; i--) {
-    const cx = good.pos[i * 2], cy = good.pos[i * 2 + 1];
+    const cx = abs[i * 2], cy = abs[i * 2 + 1];
     const w = good.sizes[i * 2], h = good.sizes[i * 2 + 1];
     if (Math.abs(x - cx) <= w / 2 && Math.abs(y - cy) <= h / 2) return i;
   }
   return -1;
 }
 
+function hitLaneBorder(ev) {
+  const s = svgScale();
+  if (!s || !good?.advance) return -1;
+  const x = (ev.clientX - s.r.left) * s.sx;
+  const { lanes, margin, gap } = good.advance;
+  let lx = margin;
+  for (let i = 0; i < lanes.length; i++) {
+    const borderX = lx + lanes[i].w;
+    if (Math.abs(x - borderX) <= 12) return i;
+    lx += lanes[i].w + (i < lanes.length - 1 ? gap : 0);
+  }
+  return -1;
+}
+
 view.addEventListener("pointerdown", (ev) => {
+  activePtrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  if (activePtrs.size === 2) {
+    // Second finger/mouse lands: switch to pinch, cancel other gestures.
+    drag = null; laneDrag = null; pan = null;
+    const [p1, p2] = [...activePtrs.values()];
+    const vr = view.getBoundingClientRect();
+    pinch = {
+      d0: Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1,
+      z0: cam.z,
+      mx0: (p1.x + p2.x) / 2 - vr.left,
+      my0: (p1.y + p2.y) / 2 - vr.top,
+      camx0: cam.x, camy0: cam.y,
+    };
+    view.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+    return;
+  }
+  const li = hitLaneBorder(ev);
+  if (li >= 0) {
+    laneDrag = { i: li, cx: ev.clientX };
+    view.setPointerCapture(ev.pointerId);
+    view.style.cursor = "col-resize";
+    ev.preventDefault();
+    return;
+  }
   const i = hitNode(ev);
-  if (i < 0) return;
+  if (i < 0) {
+    // Empty canvas: Figma-style pan.
+    pan = { sx: ev.clientX, sy: ev.clientY, cx: cam.x, cy: cam.y };
+    view.setPointerCapture(ev.pointerId);
+    view.style.cursor = "grabbing";
+    ev.preventDefault();
+    return;
+  }
   drag = { i, cx: ev.clientX, cy: ev.clientY };
   view.setPointerCapture(ev.pointerId);
   view.style.cursor = "grabbing";
@@ -274,8 +705,38 @@ view.addEventListener("pointerdown", (ev) => {
 });
 
 view.addEventListener("pointermove", (ev) => {
+  if (activePtrs.has(ev.pointerId)) activePtrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  if (pinch && activePtrs.size >= 2) {
+    const [p1, p2] = [...activePtrs.values()];
+    const d = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+    const vr = view.getBoundingClientRect();
+    const mx = (p1.x + p2.x) / 2 - vr.left, my = (p1.y + p2.y) / 2 - vr.top;
+    const z2 = Math.min(Z_MAX, Math.max(Z_MIN, pinch.z0 * (d / pinch.d0)));
+    const k = z2 / pinch.z0;
+    cam.x = mx - (mx - pinch.camx0) * k + (mx - pinch.mx0);
+    cam.y = my - (my - pinch.camy0) * k + (my - pinch.my0);
+    cam.z = z2;
+    applyCam();
+    return;
+  }
+  if (laneDrag) {
+    const s = svgScale();
+    if (!s) return;
+    const dx = (ev.clientX - laneDrag.cx) * s.sx;
+    good.advance.lanes[laneDrag.i].w = Math.max(80, good.advance.lanes[laneDrag.i].w + dx);
+    laneDrag.cx = ev.clientX;
+    scheduleRender();
+    return;
+  }
+  if (pan) {
+    cam.x = pan.cx + (ev.clientX - pan.sx);
+    cam.y = pan.cy + (ev.clientY - pan.sy);
+    applyCam();
+    return;
+  }
   if (!drag) {
-    view.style.cursor = hitNode(ev) >= 0 ? "grab" : "default";
+    const border = hitLaneBorder(ev);
+    view.style.cursor = border >= 0 ? "col-resize" : (hitNode(ev) >= 0 ? "grab" : "default");
     return;
   }
   const s = svgScale();
@@ -288,11 +749,54 @@ view.addEventListener("pointermove", (ev) => {
 });
 
 for (const t of ["pointerup", "pointercancel"]) {
-  view.addEventListener(t, () => {
+  view.addEventListener(t, (ev) => {
+    activePtrs.delete(ev.pointerId);
+    if (activePtrs.size < 2) pinch = null;
     drag = null;
+    laneDrag = null;
+    pan = null;
     view.style.cursor = "default";
   });
 }
+
+// ── Zoom toolbar ──
+document.getElementById("zoombar").addEventListener("pointerdown", (e) => e.stopPropagation());
+document.getElementById("zoom-in").addEventListener("click", () => {
+  const vr = view.getBoundingClientRect();
+  zoomAt(vr.width / 2, vr.height / 2, 1.25);
+});
+document.getElementById("zoom-out").addEventListener("click", () => {
+  const vr = view.getBoundingClientRect();
+  zoomAt(vr.width / 2, vr.height / 2, 1 / 1.25);
+});
+document.getElementById("zoom-fit").addEventListener("click", () => fitView());
+document.getElementById("zoom-pct").addEventListener("click", () => fitView(1));
+view.addEventListener("dblclick", (e) => {
+  if (hitNode(e) < 0) fitView();
+});
+
+// ── Code panel visibility ──
+const toggleEditorBtn = document.getElementById("toggle-editor");
+
+function setEditorVisible(visible) {
+  document.body.classList.toggle("editor-hidden", !visible);
+  toggleEditorBtn.setAttribute("aria-pressed", String(visible));
+  try { localStorage.setItem("editor", visible ? "shown" : "hidden"); } catch {}
+}
+
+// Delegated at document level so the click works even if layout /
+// compositing recycles the button's hit target between paint frames.
+document.addEventListener("click", (e) => {
+  if (e.target.closest && e.target.closest("#toggle-editor")) {
+    setEditorVisible(document.body.classList.contains("editor-hidden"));
+  }
+});
+try {
+  if (localStorage.getItem("editor") === "hidden") {
+    document.body.classList.add("editor-hidden");
+    toggleEditorBtn.setAttribute("aria-pressed", "false");
+  }
+} catch {}
 
 // ── Wiring ──
 let deb;
@@ -301,15 +805,72 @@ editor.addEventListener("input", () => {
   deb = setTimeout(() => rebuild(editor.value), 120);
 });
 
-document.getElementById("examples").addEventListener("change", (e) => {
-  editor.value = EXAMPLES[e.target.value];
+// ── Custom example dropdown ──
+function applyExample(value) {
+  editor.value = EXAMPLES[value];
   good = null; // fresh example, fresh layout
   rebuild(editor.value);
+  fitView();
+}
+
+const dd = document.getElementById("examples-dd");
+const ddBtn = document.getElementById("examples-btn");
+const ddItems = [...dd.querySelectorAll(".dd-menu li")];
+const ddLabel = document.getElementById("examples-label");
+
+function setDropdown(open) {
+  dd.classList.toggle("open", open);
+  ddBtn.setAttribute("aria-expanded", String(open));
+}
+
+ddBtn.addEventListener("click", () => setDropdown(!dd.classList.contains("open")));
+document.addEventListener("click", (e) => {
+  if (!dd.contains(e.target)) setDropdown(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && dd.classList.contains("open")) {
+    setDropdown(false);
+    ddBtn.focus();
+  }
+});
+
+for (const li of ddItems) {
+  li.addEventListener("click", () => {
+    for (const it of ddItems) it.setAttribute("aria-selected", String(it === li));
+    ddLabel.textContent = li.textContent;
+    setDropdown(false);
+    applyExample(li.dataset.value);
+  });
+}
+// Keyboard: arrows move the active option, Enter/Space picks it.
+let ddActive = 0;
+ddBtn.addEventListener("keydown", (e) => {
+  if (!["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) return;
+  e.preventDefault();
+  if (["Enter", " "].includes(e.key) && !dd.classList.contains("open")) {
+    setDropdown(true);
+    return;
+  }
+  if (!dd.classList.contains("open")) return;
+  if (e.key === "Enter" || e.key === " ") {
+    ddItems[ddActive].click();
+    ddBtn.focus();
+    return;
+  }
+  ddActive = Math.min(ddItems.length - 1, Math.max(0, ddActive + (e.key === "ArrowDown" ? 1 : -1)));
+  ddItems.forEach((it, i) => it.setAttribute("aria-current", String(i === ddActive)));
 });
 
 document.getElementById("relayout").addEventListener("click", () => {
   if (!good) return;
-  good.pos = Array.from(auto_positions(good.src));
+  if (isAdvance(good.src)) {
+    const layout = JSON.parse(layout_advance_json(good.src));
+    good.advance.lanes = layout.lanes.map((l) => ({ id: l.id, w: l.w }));
+    good.pos = layout.nodes.flatMap((n) => [0, n.y]);
+    good.sizes = layout.nodes.flatMap((n) => [n.w, n.h]);
+  } else {
+    good.pos = Array.from(auto_positions(good.src));
+  }
   // Auto layout is an explicit reset — drop the remembered drags so
   // they don't resurrect on the next edit.
   good.keys.forEach((k) => savedPos.delete(k));
@@ -332,6 +893,7 @@ document.getElementById("version").textContent =
   `engine v${engine_version()} · wasm`;
 editor.value = EXAMPLES.flow;
 rebuild(editor.value);
+fitView();
 </script>
 </body>
 </html>
