@@ -129,22 +129,25 @@
   #toggle-editor[aria-pressed="false"] { color: var(--muted); border-style: dashed; }
 
   /* ── Collapse handle riding the editor/view divider ── */
+  .seam-anchor { position: relative; width: 0; flex: none; }
   .collapse-handle {
-    position: absolute; top: 50%; left: max(38%, 280px);
+    position: absolute; top: 50%; left: 0;
     transform: translate(-50%, -50%);
     width: 26px; height: 54px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center;
     border-radius: 9px; z-index: 4;
     background: color-mix(in srgb, var(--card) 88%, transparent);
     -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
-    transition: left .2s ease, background-color .15s ease,
-                box-shadow .15s ease, border-color .15s ease;
+    transition: background-color .15s ease, box-shadow .15s ease,
+                border-color .15s ease;
   }
   .collapse-handle:hover {
     background: var(--card); border-color: var(--accent);
     box-shadow: 0 0 0 4px var(--accent-glow), var(--shadow-md);
   }
   .collapse-handle svg { width: 14px; height: 14px; transition: transform .18s ease; }
+  body.editor-hidden .collapse-handle { left: 12px; transform: translate(0, -50%); }
+  body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
   body.editor-hidden .collapse-handle { left: 12px; }
   body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
 
@@ -246,8 +249,9 @@
     }
     #view { order: 1; flex: 1; min-height: 0; padding: 14px; background-size: 18px 18px; }
 
-    .collapse-handle { top: auto; left: 14px; bottom: calc(36vh - 22px); bottom: calc(36dvh - 22px); transform: none; }
-    body.editor-hidden .collapse-handle { left: 12px; bottom: 10px; }
+    .seam-anchor { order: 2; height: 0; align-self: stretch; }
+    .collapse-handle { top: 0; transform: translate(-50%, -50%); }
+    body.editor-hidden .collapse-handle { left: 12px; bottom: auto; transform: translate(0, -140%); }
   }
   @media (max-width: 720px) {
     header { gap: 8px; padding: 10px 12px; }
@@ -291,11 +295,13 @@
 </header>
 <main>
   <textarea id="editor" spellcheck="false"></textarea>
-  <button id="toggle-editor" class="collapse-handle" aria-pressed="true" title="Show / hide code panel" aria-label="Show / hide code panel">
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M7.5 4L3.5 8l4 4"/><path d="M12.5 4L8.5 8l4 4"/>
-    </svg>
-  </button>
+  <div class="seam-anchor" aria-hidden="true">
+    <button id="toggle-editor" class="collapse-handle" aria-pressed="true" title="Show / hide code panel" aria-label="Show / hide code panel">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M7.5 4L3.5 8l4 4"/><path d="M12.5 4L8.5 8l4 4"/>
+      </svg>
+    </button>
+  </div>
   <div id="view"></div>
 </main>
 <div id="error"></div>
@@ -640,8 +646,12 @@ function setEditorVisible(visible) {
   try { localStorage.setItem("editor", visible ? "shown" : "hidden"); } catch {}
 }
 
-toggleEditorBtn.addEventListener("click", () => {
-  setEditorVisible(document.body.classList.contains("editor-hidden"));
+// Delegated at document level so the click works even if layout /
+// compositing recycles the button's hit target between paint frames.
+document.addEventListener("click", (e) => {
+  if (e.target.closest && e.target.closest("#toggle-editor")) {
+    setEditorVisible(document.body.classList.contains("editor-hidden"));
+  }
 });
 try {
   if (localStorage.getItem("editor") === "hidden") {
