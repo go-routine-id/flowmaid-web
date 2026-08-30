@@ -30,6 +30,16 @@ fn render_advance_svg_impl(source: &str) -> Result<String, String> {
     flowmaid::render_advance_svg(source).map_err(|e| e.to_string())
 }
 
+/// Render a text-syntax swimlane diagram (`swimlane` header) to an SVG string.
+#[wasm_bindgen]
+pub fn render_advance_text_svg(source: &str) -> Result<String, JsError> {
+    render_advance_text_svg_impl(source).map_err(|e| JsError::new(&e))
+}
+
+fn render_advance_text_svg_impl(source: &str) -> Result<String, String> {
+    flowmaid::render_advance_text_svg(source).map_err(|e| e.to_string())
+}
+
 /// Render an advance / swimlane diagram from JSON with caller-provided
 /// node centre positions (flat `[x, y]` pairs in the same order as
 /// [`layout_advance_json`]'s `nodes` array). Edges are re-routed and
@@ -145,6 +155,12 @@ fn advance_scene_to_json(scene: &flowmaid::AdvanceScene) -> String {
     s.push_str(&format!("{:.1}", scene.width));
     s.push_str(",\"height\":");
     s.push_str(&format!("{:.1}", scene.height));
+    s.push_str(",\"direction\":\"");
+    s.push_str(match scene.direction {
+        flowmaid::AdvanceDirection::Vertical => "vertical",
+        flowmaid::AdvanceDirection::Horizontal => "horizontal",
+    });
+    s.push_str("\"");
 
     s.push_str(",\"lanes\":[");
     for (i, lane) in scene.lanes.iter().enumerate() {
@@ -480,6 +496,16 @@ mod tests {
         assert!(svg.contains("B"));
         assert!(super::render_advance_routed_impl(src, &[50.0, 50.0]).is_err());
         assert!(super::render_advance_routed_impl(src, &[f64::NAN; 4]).is_err());
+    }
+
+    #[test]
+    fn advance_text_svg_renders() {
+        let src = "swimlane\nlane dev Development\ndesign[Design]\ncode(Code)\nlane qa QA\ntest{Test}\ndesign --> code\ncode --> test";
+        let svg = super::render_advance_text_svg_impl(src).unwrap();
+        assert!(svg.starts_with("<svg"));
+        assert!(svg.contains("Development"));
+        assert!(svg.contains("QA"));
+        assert!(svg.contains("Design"));
     }
 
     #[test]
