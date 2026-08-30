@@ -57,6 +57,11 @@ export function render_advance_routed_with_lanes(source: string, positions: Floa
 export function render_advance_svg(source: string): string;
 
 /**
+ * Render a text-syntax swimlane diagram (`swimlane` header) to an SVG string.
+ */
+export function render_advance_text_svg(source: string): string;
+
+/**
  * Render with caller-provided centres (flat `[x, y]` pairs, same
  * order as [`node_keys`]) — edges re-route around the dragged
  * positions without re-running layout, exactly like the desktop
@@ -84,6 +89,7 @@ export interface InitOutput {
     readonly render_advance_routed: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly render_advance_routed_with_lanes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly render_advance_svg: (a: number, b: number) => [number, number, number, number];
+    readonly render_advance_text_svg: (a: number, b: number) => [number, number, number, number];
     readonly render_routed: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly render_svg: (a: number, b: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;

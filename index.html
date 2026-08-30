@@ -302,7 +302,9 @@
       <li role="option" data-value="seq">Sequence diagram</li>
       <li role="option" data-value="pie">Pie chart</li>
       <li role="option" data-value="statechart">State diagram</li>
-      <li role="option" data-value="advance">Swimlane (advance)</li>
+      <li role="option" data-value="advance">Swimlane (JSON)</li>
+      <li role="option" data-value="swimlane">Swimlane (text)</li>
+      <li role="option" data-value="nested_horizontal">Nested horizontal lanes</li>
     </ul>
   </div>
   <button id="relayout">Auto layout</button>
@@ -340,7 +342,7 @@
 <script type="module">
 import init, {
   render_routed, node_keys, auto_positions, node_sizes, engine_version,
-  render_advance_svg, layout_advance_json, render_advance_routed_with_lanes,
+  render_advance_svg, render_advance_text_svg, layout_advance_json, render_advance_routed_with_lanes,
 } from "./pkg/flowmaid_web.js";
 
 const EXAMPLES = {
@@ -438,6 +440,62 @@ const EXAMPLES = {
     {"from": "test", "to": "sign", "label": "approve"}
   ]
 }`,
+  swimlane: `swimlane
+title Order Processing Pipeline
+lane sales Sales
+  order([New Order])
+  quote[Generate Quote]
+lane fulfillment Fulfillment
+  pack[Pack Goods]
+  ship((Ship Package))
+lane finance Finance
+  invoice[Issue Invoice]
+  pay{Payment Received?}
+  done(((Completed)))
+
+order --> quote
+quote --> pack
+pack --> ship
+ship --> invoice
+invoice --> pay
+pay -->|yes| done
+pay -->|no| invoice`,
+  nested_horizontal: `{
+  "direction": "horizontal",
+  "lanes": [
+    {
+      "id": "frontend",
+      "title": "Frontend",
+      "children": [
+        {"id": "ui", "title": "UI Layer"},
+        {"id": "state", "title": "State Management"}
+      ]
+    },
+    {
+      "id": "backend",
+      "title": "Backend Services",
+      "children": [
+        {"id": "api", "title": "API Gateway"},
+        {"id": "db", "title": "Database"}
+      ]
+    }
+  ],
+  "nodes": [
+    {"id": "input", "label": "User Input", "lane": "ui", "shape": "stadium"},
+    {"id": "action", "label": "Dispatch Action", "lane": "state", "shape": "rect"},
+    {"id": "req", "label": "GraphQL Query", "lane": "api", "shape": "rounded"},
+    {"id": "query", "label": "Execute SQL", "lane": "db", "shape": "cylinder"},
+    {"id": "cache", "label": "Update Cache", "lane": "state", "shape": "rect"},
+    {"id": "render", "label": "Re-render View", "lane": "ui", "shape": "diamond"}
+  ],
+  "edges": [
+    {"from": "input", "to": "action", "label": "clicks"},
+    {"from": "action", "to": "req", "label": "fetches"},
+    {"from": "req", "to": "query", "label": "queries"},
+    {"from": "query", "to": "cache", "label": "returns data"},
+    {"from": "cache", "to": "render", "label": "notifies"}
+  ]
+}`,
 };
 
 const editor = document.getElementById("editor");
@@ -501,9 +559,13 @@ let good = null; // { src, keys: string[], pos: number[], sizes: number[] }
 // which contribute no keys) and back. Found by a bug hunt.
 const savedPos = new Map();
 
-// Advance / swimlane diagrams use JSON input instead of Mermaid syntax.
+// Advance / swimlane diagrams use JSON input or text syntax (swimlane ...).
 function isAdvance(src) {
   return src.trim().startsWith("{");
+}
+
+function isSwimlaneText(src) {
+  return src.trim().startsWith("swimlane");
 }
 
 function rebuild(src) {
@@ -513,6 +575,14 @@ function rebuild(src) {
     // switching diagram types.
     if (good && isAdvance(src) !== isAdvance(good.src)) {
       savedPos.clear();
+    }
+    // Swimlane text syntax (render statically via render_advance_text_svg)
+    if (isSwimlaneText(src)) {
+      stage.innerHTML = render_advance_text_svg(src);
+      good = { src, keys: [], pos: [], sizes: [] };
+      errBox.style.display = "none";
+      applyCam();
+      return;
     }
     // Advance diagrams are self-contained JSON: seed drag state from
     // layout_advance_json, then render via the routed renderer so nodes
@@ -535,7 +605,7 @@ function rebuild(src) {
         );
       }
       const pos = nodes.flatMap((n, i) => savedPos.get(keys[i]) ?? [0, n.y]);
-      good = { src, keys, pos, sizes, advance: { lanes, margin, gap, nodeLanes } };
+      good = { src, keys, pos, sizes, advance: { direction: layout.direction, lanes, margin, gap, nodeLanes } };
       errBox.style.display = "none";
       render();
       return;
@@ -572,41 +642,23 @@ function advanceAbsPos() {
   return abs;
 }
 
-function addLaneSeparators(svg) {
-  if (!good?.advance || !svg) return;
-  const ns = "http://www.w3.org/2000/svg";
-  const { lanes, margin } = good.advance;
-  const vb = svg.viewBox.baseVal;
-  let lx = margin;
-  for (let i = 0; i < lanes.length; i++) {
-    lx += lanes[i].w;
-    const x = lx;
-    const line = document.createElementNS(ns, "line");
-    line.setAttribute("x1", x);
-    line.setAttribute("y1", margin);
-    line.setAttribute("x2", x);
-    line.setAttribute("y2", vb.height - margin);
-    line.setAttribute("stroke-width", "2");
-    line.setAttribute("stroke-dasharray", "4 3");
-    line.setAttribute("opacity", "0.55");
-    line.style.stroke = "var(--line)";
-    line.style.pointerEvents = "none";
-    svg.appendChild(line);
-  }
-}
-
 function render() {
   if (!good) return;
-  if (isAdvance(good.src)) {
-    const { lanes, margin, gap } = good.advance;
-    stage.innerHTML = render_advance_routed_with_lanes(
-      good.src,
-      advanceAbsPos(),
-      new Float64Array(lanes.map((l) => l.w)),
-      margin,
-      gap
-    );
-    addLaneSeparators(stage.querySelector("svg"));
+  if (isSwimlaneText(good.src)) {
+    stage.innerHTML = render_advance_text_svg(good.src);
+  } else if (isAdvance(good.src)) {
+    if (good.advance?.direction === "horizontal") {
+      stage.innerHTML = render_advance_svg(good.src);
+    } else {
+      const { lanes, margin, gap } = good.advance;
+      stage.innerHTML = render_advance_routed_with_lanes(
+        good.src,
+        advanceAbsPos(),
+        new Float64Array(lanes.map((l) => l.w)),
+        margin,
+        gap
+      );
+    }
   } else {
     stage.innerHTML = render_routed(good.src, new Float64Array(good.pos));
   }
@@ -618,11 +670,10 @@ function scheduleRender() {
   if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); });
 }
 
-// ── Drag & drop, desktop-style: hit-test on node boxes and lane
-//    borders, apply pointer deltas in world units, let the engine
+// ── Drag & drop, desktop-style: hit-test on node boxes,
+//    apply pointer deltas in world units, let the engine
 //    re-route. ──
 let drag = null; // { i, cx, cy }
-let laneDrag = null; // { i, cx }
 let pan = null; // { sx, sy, cx, cy }
 const activePtrs = new Map(); // pointerId -> {x, y} for pinch
 let pinch = null; // { d0, z0, mx0, my0, camx0, camy0 }
@@ -649,25 +700,11 @@ function hitNode(ev) {
   return -1;
 }
 
-function hitLaneBorder(ev) {
-  const s = svgScale();
-  if (!s || !good?.advance) return -1;
-  const x = (ev.clientX - s.r.left) * s.sx;
-  const { lanes, margin, gap } = good.advance;
-  let lx = margin;
-  for (let i = 0; i < lanes.length; i++) {
-    const borderX = lx + lanes[i].w;
-    if (Math.abs(x - borderX) <= 12) return i;
-    lx += lanes[i].w + (i < lanes.length - 1 ? gap : 0);
-  }
-  return -1;
-}
-
 view.addEventListener("pointerdown", (ev) => {
   activePtrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
   if (activePtrs.size === 2) {
     // Second finger/mouse lands: switch to pinch, cancel other gestures.
-    drag = null; laneDrag = null; pan = null;
+    drag = null; pan = null;
     const [p1, p2] = [...activePtrs.values()];
     const vr = view.getBoundingClientRect();
     pinch = {
@@ -678,14 +715,6 @@ view.addEventListener("pointerdown", (ev) => {
       camx0: cam.x, camy0: cam.y,
     };
     view.setPointerCapture(ev.pointerId);
-    ev.preventDefault();
-    return;
-  }
-  const li = hitLaneBorder(ev);
-  if (li >= 0) {
-    laneDrag = { i: li, cx: ev.clientX };
-    view.setPointerCapture(ev.pointerId);
-    view.style.cursor = "col-resize";
     ev.preventDefault();
     return;
   }
@@ -719,15 +748,6 @@ view.addEventListener("pointermove", (ev) => {
     applyCam();
     return;
   }
-  if (laneDrag) {
-    const s = svgScale();
-    if (!s) return;
-    const dx = (ev.clientX - laneDrag.cx) * s.sx;
-    good.advance.lanes[laneDrag.i].w = Math.max(80, good.advance.lanes[laneDrag.i].w + dx);
-    laneDrag.cx = ev.clientX;
-    scheduleRender();
-    return;
-  }
   if (pan) {
     cam.x = pan.cx + (ev.clientX - pan.sx);
     cam.y = pan.cy + (ev.clientY - pan.sy);
@@ -735,8 +755,7 @@ view.addEventListener("pointermove", (ev) => {
     return;
   }
   if (!drag) {
-    const border = hitLaneBorder(ev);
-    view.style.cursor = border >= 0 ? "col-resize" : (hitNode(ev) >= 0 ? "grab" : "default");
+    view.style.cursor = hitNode(ev) >= 0 ? "grab" : "default";
     return;
   }
   const s = svgScale();
@@ -753,7 +772,6 @@ for (const t of ["pointerup", "pointercancel"]) {
     activePtrs.delete(ev.pointerId);
     if (activePtrs.size < 2) pinch = null;
     drag = null;
-    laneDrag = null;
     pan = null;
     view.style.cursor = "default";
   });
