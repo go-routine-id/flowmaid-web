@@ -160,7 +160,7 @@ fn advance_scene_to_json(scene: &flowmaid::AdvanceScene) -> String {
         flowmaid::AdvanceDirection::Vertical => "vertical",
         flowmaid::AdvanceDirection::Horizontal => "horizontal",
     });
-    s.push_str("\"");
+    s.push('"');
 
     s.push_str(",\"lanes\":[");
     for (i, lane) in scene.lanes.iter().enumerate() {
