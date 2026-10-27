@@ -207,7 +207,8 @@
     display: none; flex-direction: column; width: 220px; flex: none;
     border-right: 1px solid var(--line2); background: var(--bg);
   }
-  body.has-files #files { display: flex; }
+  body.has-files #files, body.has-remembered #files { display: flex; }
+  #reopen { margin: 12px; }
   #files .files-head {
     display: flex; align-items: center; gap: 6px; padding: 10px 12px;
     border-bottom: 1px solid var(--line2);
@@ -341,6 +342,7 @@
 <main>
   <aside id="files" aria-label="Opened diagram files">
     <div class="files-head"><span id="files-title">Files</span><button id="files-close" title="Close files">✕</button></div>
+    <button id="reopen" hidden>Reopen folder</button>
     <ul id="file-list"></ul>
   </aside>
   <input id="file-input" type="file" accept=".mmd,.mermaid" multiple hidden>
@@ -1132,6 +1134,40 @@ let files = [];
 let current = -1;
 const fileList = document.getElementById("file-list");
 const saveBtn = document.getElementById("save");
+const reopenBtn = document.getElementById("reopen");
+
+// The last opened folder survives reloads: Chromium can keep directory
+// handles in IndexedDB (the browser asks for permission again).
+const lastDir = {
+  op(mode, fn) {
+    return new Promise((res, rej) => {
+      const open = indexedDB.open("flowmaid", 1);
+      open.onupgradeneeded = () => open.result.createObjectStore("handles");
+      open.onerror = () => rej(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const req = fn(db.transaction("handles", mode).objectStore("handles"));
+        req.onsuccess = () => { db.close(); res(req.result); };
+        req.onerror = () => { db.close(); rej(req.error); };
+      };
+    }).catch(() => null); // private mode / blocked storage: just don't remember
+  },
+  get() { return this.op("readonly", (st) => st.get("dir")); },
+  set(h) { return this.op("readwrite", (st) => st.put(h, "dir")); },
+  clear() { return this.op("readwrite", (st) => st.delete("dir")); },
+};
+let remembered = null; // folder handle kept in IndexedDB
+
+// With no files open, the sidebar stays up offering the remembered folder.
+function syncReopen() {
+  const show = !!remembered && !files.length;
+  reopenBtn.hidden = !show;
+  document.body.classList.toggle("has-remembered", show);
+  if (show) {
+    document.getElementById("files-title").textContent = remembered.name;
+    reopenBtn.title = `Reopen folder "${remembered.name}" from last time`;
+  }
+}
 
 function markDirty(f, dirty) {
   f.li?.classList.toggle("dirty", dirty);
@@ -1176,7 +1212,8 @@ function selectFile(i) {
   openSource(files[i].text);
 }
 
-async function setFiles(list, title) {
+// `dir` is the folder handle the list came from, remembered for Reopen.
+async function setFiles(list, title, dir = null) {
   list = list.filter((f) => DIAGRAM_EXT.test(f.name));
   if (!list.length) {
     errBox.textContent = "No .mmd / .mermaid files found.";
@@ -1188,7 +1225,9 @@ async function setFiles(list, title) {
   list.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
   files = list;
   current = -1;
+  if (dir) { remembered = dir; lastDir.set(dir); }
   renderFileList(title);
+  syncReopen();
   selectFile(0);
 }
 
@@ -1221,7 +1260,7 @@ document.getElementById("open").addEventListener("click", async (e) => {
   if (!window.showDirectoryPicker) return document.getElementById("dir-input").click();
   try {
     const dir = await showDirectoryPicker();
-    await setFiles(await walkDir(dir), dir.name);
+    await setFiles(await walkDir(dir), dir.name, dir);
   } catch (err) {
     if (err.name !== "AbortError") {
       errBox.textContent = String(err.message ?? err);
@@ -1243,8 +1282,37 @@ document.getElementById("files-close").addEventListener("click", () => {
   if (files.some((f) => f.text !== f.saved) &&
       !confirm("Discard unsaved changes?")) return;
   files = [];
+  remembered = null; // closing also forgets the folder
+  lastDir.clear();
   selectFile(-1);
   renderFileList("Files");
+  syncReopen();
+});
+
+reopenBtn.addEventListener("click", async () => {
+  const dir = remembered;
+  try {
+    if ((await dir.requestPermission({ mode: "read" })) !== "granted") return;
+    await setFiles(await walkDir(dir), dir.name, dir);
+  } catch (err) {
+    const gone = err.name === "NotFoundError";
+    if (gone) { remembered = null; lastDir.clear(); syncReopen(); }
+    errBox.textContent = "reopen: " + (gone ? `folder "${dir.name}" no longer exists` : String(err.message ?? err));
+    errBox.style.display = "block";
+  }
+});
+
+// On load, offer the remembered folder; open it straight away when the
+// browser still has permission (e.g. Chrome's "allow on every visit").
+if (window.showDirectoryPicker) lastDir.get().then(async (dir) => {
+  if (!dir) return;
+  remembered = dir;
+  try {
+    if (!files.length && (await dir.queryPermission({ mode: "read" })) === "granted") {
+      await setFiles(await walkDir(dir), dir.name, dir);
+    }
+  } catch {} // folder moved or deleted — the Reopen button reports it
+  syncReopen();
 });
 
 async function saveCurrent() {
@@ -1309,7 +1377,8 @@ addEventListener("drop", async (e) => {
       const hs = (await Promise.all(handles)).filter(Boolean);
       const root = { values: async function* () { yield* hs; } };
       const single = hs.length === 1 && hs[0].kind === "directory";
-      return await setFiles(await walkDir(single ? hs[0] : root), single ? hs[0].name : "Dropped files");
+      return await setFiles(await walkDir(single ? hs[0] : root),
+        single ? hs[0].name : "Dropped files", single ? hs[0] : null);
     }
     if (entries.length) {
       const single = entries.length === 1 && entries[0].isDirectory;
