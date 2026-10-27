@@ -603,8 +603,8 @@ const Z_READABLE = 0.62;
 function fitView(zCap = 1.5, readable = false) {
   const svg = stage.querySelector("svg");
   if (!svg) return;
-  const w = parseFloat(svg.getAttribute("width")) || svg.viewBox.baseVal.width;
-  const h = parseFloat(svg.getAttribute("height")) || svg.viewBox.baseVal.height;
+  const w = parseFloat(svg.getAttribute("width")) || svg.viewBox.baseVal?.width;
+  const h = parseFloat(svg.getAttribute("height")) || svg.viewBox.baseVal?.height;
   if (!(w > 0 && h > 0)) return;
   const vr = view.getBoundingClientRect();
   cam.z = Math.min(Z_MAX, Math.max(Z_MIN, Math.min((vr.width - 56) / w, (vr.height - 56) / h, zCap)));
@@ -671,6 +671,7 @@ function setupMermaid(m) {
 }
 
 let mermaidSeq = 0;
+let fitOnRender = false; // set by openSource until a diagram lands
 // Latest-wins: a slow render of stale text must not overwrite a newer one.
 async function renderMermaid(src) {
   const seq = ++mermaidSeq;
@@ -691,12 +692,20 @@ async function renderMermaid(src) {
     // Mermaid sizes its SVG with CSS (width=100%, max-width); the camera
     // needs real pixel width/height, so take them from the viewBox.
     const el = stage.querySelector("svg");
-    const vb = el.viewBox.baseVal;
-    el.removeAttribute("style");
-    el.setAttribute("width", vb.width);
-    el.setAttribute("height", vb.height);
+    const vb = el?.viewBox.baseVal;
+    if (vb?.width > 0 && vb.height > 0) {
+      el.removeAttribute("style");
+      el.setAttribute("width", vb.width);
+      el.setAttribute("height", vb.height);
+    }
     errBox.style.display = "none";
-    applyCam();
+    // A render superseded mid-open leaves the fit to whichever one wins.
+    if (fitOnRender) {
+      fitOnRender = false;
+      fitView(1.5, true);
+    } else {
+      applyCam();
+    }
   } catch (e) {
     if (seq !== mermaidSeq) return;
     errBox.textContent = "mermaid: " + String(e.message ?? e);
@@ -1026,8 +1035,16 @@ async function openSource(src) {
   editor.value = src;
   good = null;
   savedPos.clear();
+  // Clear first: if the new source fails to parse, the previous
+  // document's diagram must not stay up (or be downloaded) under its name.
+  stage.innerHTML = "";
+  fitOnRender = true;
   await rebuild(src);
-  fitView(1.5, true);
+  // Flowmaid renders synchronously; a pending mermaid render fits itself.
+  if (fitOnRender && (engine !== "mermaid" || stage.querySelector("svg"))) {
+    fitOnRender = false;
+    fitView(1.5, true);
+  }
 }
 
 // ── Custom example dropdown ──
@@ -1160,7 +1177,11 @@ function renderFileList(title) {
     }
     li.append(f.name);
     li.title = f.path;
+    li.tabIndex = 0;
     li.addEventListener("click", () => selectFile(i));
+    li.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectFile(i); }
+    });
     f.li = li;
     markDirty(f, f.text !== f.saved);
     fileList.append(li);
@@ -1256,19 +1277,21 @@ document.getElementById("files-close").addEventListener("click", () => {
 async function saveCurrent() {
   const f = files[current];
   if (!f) return;
+  // Snapshot now: edits typed while the write is in flight stay dirty.
+  const text = f.text;
   try {
     if (f.handle?.createWritable) {
       if ((await f.handle.requestPermission?.({ mode: "readwrite" })) === "denied") {
         throw new Error("Write permission denied — use Download instead.");
       }
       const w = await f.handle.createWritable();
-      await w.write(f.text);
+      await w.write(text);
       await w.close();
     } else {
-      downloadBlob(f.text, "text/plain", f.name);
+      downloadBlob(text, "text/plain", f.name);
     }
-    f.saved = f.text;
-    markDirty(f, false);
+    f.saved = text;
+    markDirty(f, f.text !== f.saved);
   } catch (err) {
     errBox.textContent = "save: " + String(err.message ?? err);
     errBox.style.display = "block";
@@ -1277,7 +1300,10 @@ async function saveCurrent() {
 saveBtn.addEventListener("click", saveCurrent);
 
 addEventListener("beforeunload", (e) => {
-  if (files.some((f) => f.text !== f.saved)) e.preventDefault();
+  if (files.some((f) => f.text !== f.saved)) {
+    e.preventDefault();
+    e.returnValue = ""; // older browsers only show the prompt with this
+  }
 });
 
 // Drag & drop files or folders anywhere on the page.
@@ -1298,21 +1324,51 @@ addEventListener("drop", async (e) => {
   dragDepth = 0;
   document.body.classList.remove("dropping");
   const items = [...e.dataTransfer.items].filter((it) => it.kind === "file");
+  // Items must be read synchronously, before the first await.
   // Chromium hands out writable handles (folders included); elsewhere
-  // fall back to plain File objects (read-only, Save downloads).
-  if (items.length && items[0].getAsFileSystemHandle) {
-    const handles = await Promise.all(items.map((it) => it.getAsFileSystemHandle()));
-    const out = [];
-    for (const h of handles) {
-      if (!h) continue;
-      if (h.kind === "directory") out.push(...await walkDir(h, h.name + "/"));
-      else if (DIAGRAM_EXT.test(h.name)) out.push(await entryFromHandle(h, h.name));
+  // walk FileSystemEntry trees (read-only, Save downloads).
+  const handles = items[0]?.getAsFileSystemHandle
+    ? items.map((it) => it.getAsFileSystemHandle()) : null;
+  const entries = handles ? null : items.map((it) => it.webkitGetAsEntry?.()).filter(Boolean);
+  const fallback = [...e.dataTransfer.files];
+  try {
+    if (handles) {
+      const hs = (await Promise.all(handles)).filter(Boolean);
+      const root = { values: async function* () { yield* hs; } };
+      const single = hs.length === 1 && hs[0].kind === "directory";
+      return await setFiles(await walkDir(single ? hs[0] : root), single ? hs[0].name : "Dropped files");
     }
-    const title = handles.length === 1 && handles[0]?.kind === "directory" ? handles[0].name : "Dropped files";
-    return setFiles(out, title);
+    if (entries.length) {
+      const single = entries.length === 1 && entries[0].isDirectory;
+      const out = [];
+      for (const en of entries) out.push(...await walkEntry(en, en.isDirectory && !single ? en.name + "/" : ""));
+      return await setFiles(out, single ? entries[0].name : "Dropped files");
+    }
+    await setFiles(await entriesFromFileList(fallback), "Dropped files");
+  } catch (err) {
+    errBox.textContent = "drop: " + String(err.message ?? err);
+    errBox.style.display = "block";
   }
-  setFiles(await entriesFromFileList(e.dataTransfer.files), "Dropped files");
 });
+
+// FileSystemEntry walk for browsers without getAsFileSystemHandle.
+async function walkEntry(entry, prefix) {
+  if (entry.isFile) {
+    if (!DIAGRAM_EXT.test(entry.name)) return [];
+    const file = await new Promise((ok, fail) => entry.file(ok, fail));
+    const text = await file.text();
+    return [{ name: entry.name, path: prefix + entry.name, text, saved: text }];
+  }
+  const reader = entry.createReader();
+  const out = [];
+  for (;;) {
+    // readEntries returns results in batches until it yields an empty one.
+    const batch = await new Promise((ok, fail) => reader.readEntries(ok, fail));
+    if (!batch.length) break;
+    for (const child of batch) out.push(...await walkEntry(child, child.isDirectory ? prefix + child.name + "/" : prefix));
+  }
+  return out;
+}
 
 // ── Keyboard: E engine · T theme · F fit · ↑/↓ (j/k) files · ⌘S save ──
 document.addEventListener("keydown", (e) => {
