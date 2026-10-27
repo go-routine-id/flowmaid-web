@@ -20,6 +20,16 @@ pub fn render_svg(source: &str) -> Result<String, JsError> {
     flowmaid::render_svg(source).map_err(|e| JsError::new(&e.to_string()))
 }
 
+/// [`render_svg`] without the white canvas `<rect>`, so the SVG sits on
+/// the host page's own background (e.g. a dark theme). Text and edge
+/// colours are unchanged.
+#[wasm_bindgen]
+pub fn render_svg_transparent(source: &str) -> Result<String, JsError> {
+    let mut opts = flowmaid::SvgOptions::default();
+    opts.transparent = true;
+    flowmaid::render_svg_advanced(source, &opts).map_err(|e| JsError::new(&e.to_string()))
+}
+
 /// Render an advance / swimlane diagram from JSON to an SVG string.
 #[wasm_bindgen]
 pub fn render_advance_svg(source: &str) -> Result<String, JsError> {
@@ -265,7 +275,9 @@ pub fn node_keys(source: &str) -> Result<String, JsError> {
         | Document::Mindmap(_)
         | Document::Journey(_)
         | Document::GitGraph(_)
-        | Document::Architecture(_) => String::new(),
+        | Document::Architecture(_)
+        | Document::Timeline(_)
+        | Document::Sankey(_) => String::new(),
     })
 }
 
@@ -296,7 +308,9 @@ pub fn auto_positions(source: &str) -> Result<Vec<f64>, JsError> {
         | Document::Mindmap(_)
         | Document::Journey(_)
         | Document::GitGraph(_)
-        | Document::Architecture(_) => Vec::new(),
+        | Document::Architecture(_)
+        | Document::Timeline(_)
+        | Document::Sankey(_) => Vec::new(),
     })
 }
 
@@ -327,7 +341,9 @@ pub fn node_sizes(source: &str) -> Result<Vec<f64>, JsError> {
         | Document::Mindmap(_)
         | Document::Journey(_)
         | Document::GitGraph(_)
-        | Document::Architecture(_) => Vec::new(),
+        | Document::Architecture(_)
+        | Document::Timeline(_)
+        | Document::Sankey(_) => Vec::new(),
     })
 }
 
@@ -354,7 +370,9 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
         | Document::Mindmap(_)
         | Document::Journey(_)
         | Document::GitGraph(_)
-        | Document::Architecture(_) => 0,
+        | Document::Architecture(_)
+        | Document::Timeline(_)
+        | Document::Sankey(_) => 0,
     };
     if positions.len() != n * 2 {
         // A tailored message for static diagrams — "expected 0
@@ -366,6 +384,8 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
                 | Document::Pie(_)
                 | Document::Mindmap(_)
                 | Document::Journey(_)
+                | Document::Timeline(_)
+                | Document::Sankey(_)
         ) {
             format!(
                 "this diagram type is static (not draggable): pass an \
@@ -403,6 +423,8 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
         Document::Architecture(d) => {
             flowmaid::architecture::to_svg(&flowmaid::architecture::scene(&d))
         }
+        Document::Timeline(d) => flowmaid::timeline::to_svg(&flowmaid::timeline::scene(&d)),
+        Document::Sankey(d) => flowmaid::sankey::to_svg(&flowmaid::sankey::scene(&d)),
     })
 }
 
@@ -428,6 +450,20 @@ mod tests {
         // Static diagrams render through routed_impl with no positions.
         assert!(super::routed_impl("pie\n\"a\" : 1", &[]).is_ok());
         assert!(super::routed_impl("sequenceDiagram\nA->>B: hi", &[]).is_ok());
+    }
+
+    #[test]
+    fn engine_0_31_markers_and_transparent_canvas() {
+        // render_svg_transparent returns JsError (not native-testable);
+        // exercise the engine call it wraps.
+        let src = "flowchart LR\nA -.-x B\nB <--> C\nC --o D";
+        let base = flowmaid::render_svg(src).unwrap();
+        assert!(base.contains("fill=\"#ffffff\"/>"));
+        let mut opts = flowmaid::SvgOptions::default();
+        opts.transparent = true;
+        let t = flowmaid::render_svg_advanced(src, &opts).unwrap();
+        assert!(!t.contains("fill=\"#ffffff\"/>\n<defs"));
+        assert!(t.len() < base.len());
     }
 
     #[test]

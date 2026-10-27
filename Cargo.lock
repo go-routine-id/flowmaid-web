@@ -16,8 +16,8 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "flowmaid"
-version = "0.28.0"
-source = "git+https://github.com/go-routine-id/flowmaid?tag=v0.28.0#091b0a14203b7cc77d07f7ddbf9a5f6f79ad5416"
+version = "0.31.1"
+source = "git+https://github.com/go-routine-id/flowmaid?tag=v0.31.1#b2ff63e1de3c1707bd8341f5bb2345938522df70"
 
 [[package]]
 name = "flowmaid-web"

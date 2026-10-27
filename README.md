@@ -14,7 +14,7 @@ await init();
 document.body.innerHTML = render_svg("flowchart TD\nA([Start]) --> B{OK?}");
 ```
 
-`render_svg` accepts `flowchart`/`graph` and `erDiagram` sources (including `style` / `classDef` / `:::` custom colors) and throws with a line-numbered message on parse errors.
+`render_svg` accepts `flowchart`/`graph` and `erDiagram` sources (including `style` / `classDef` / `:::` custom colors) and throws with a line-numbered message on parse errors. `render_svg_transparent` renders the same SVG without the white canvas, so it sits on the host page's background (text and edge colours stay dark).
 
 ## Building
 
