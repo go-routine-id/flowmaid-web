@@ -204,10 +204,15 @@
 
   /* ── File sidebar (open folder / drop .mmd files) ── */
   #files {
-    display: none; flex-direction: column; width: 220px; flex: none;
+    display: flex; flex-direction: column; width: 220px; flex: none;
     border-right: 1px solid var(--line2); background: var(--bg);
   }
-  body.has-files #files { display: flex; }
+  /* Empty state: open buttons + drop hint, until files are listed. */
+  #files-empty { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+  body.has-files #files-empty { display: none; }
+  #files-empty p { margin: 4px 0 0; font: 400 11px/1.5 var(--mono); color: var(--muted); }
+  #reopen { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body:not(.has-files):not(.has-remembered) #files-close { visibility: hidden; } /* keeps the head height */
   #files .files-head {
     display: flex; align-items: center; gap: 6px; padding: 10px 12px;
     border-bottom: 1px solid var(--line2);
@@ -283,6 +288,8 @@
   @media (max-width: 860px) {
     main { flex-direction: column; }
     #files { order: 0; width: auto; max-height: 26vh; border-right: 0; border-bottom: 1px solid var(--line2); }
+    /* No room for an empty panel on phones; the header Open still works. */
+    body:not(.has-files):not(.has-remembered) #files { display: none; }
     #editor {
       order: 3; width: auto; min-width: 0;
       height: 36vh; height: 36dvh; flex: none;
@@ -341,6 +348,12 @@
 <main>
   <aside id="files" aria-label="Opened diagram files">
     <div class="files-head"><span id="files-title">Files</span><button id="files-close" title="Close files">✕</button></div>
+    <div id="files-empty">
+      <button id="reopen" hidden></button>
+      <button id="open-folder">Open folder</button>
+      <button id="open-files">Open files</button>
+      <p>…or drop .mmd files or a folder anywhere on the page.</p>
+    </div>
     <ul id="file-list"></ul>
   </aside>
   <input id="file-input" type="file" accept=".mmd,.mermaid" multiple hidden>
@@ -1132,6 +1145,41 @@ let files = [];
 let current = -1;
 const fileList = document.getElementById("file-list");
 const saveBtn = document.getElementById("save");
+const reopenBtn = document.getElementById("reopen");
+
+// The last opened folder survives reloads: Chromium can keep directory
+// handles in IndexedDB (the browser asks for permission again).
+const lastDir = {
+  op(mode, fn) {
+    return new Promise((res, rej) => {
+      const open = indexedDB.open("flowmaid", 1);
+      open.onupgradeneeded = () => open.result.createObjectStore("handles");
+      open.onerror = () => rej(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const req = fn(db.transaction("handles", mode).objectStore("handles"));
+        req.onsuccess = () => { db.close(); res(req.result); };
+        req.onerror = () => { db.close(); rej(req.error); };
+      };
+    }).catch(() => null); // private mode / blocked storage: just don't remember
+  },
+  get() { return this.op("readonly", (st) => st.get("dir")); },
+  set(h) { return this.op("readwrite", (st) => st.put(h, "dir")); },
+  clear() { return this.op("readwrite", (st) => st.delete("dir")); },
+};
+let remembered = null; // folder handle kept in IndexedDB
+
+// With no files open, the empty sidebar offers the remembered folder.
+function syncReopen() {
+  const show = !!remembered && !files.length;
+  reopenBtn.hidden = !show;
+  document.body.classList.toggle("has-remembered", show);
+  document.getElementById("files-close").title = files.length ? "Close files" : "Forget this folder";
+  if (show) {
+    reopenBtn.textContent = "Reopen " + remembered.name;
+    reopenBtn.title = `Reopen folder "${remembered.name}" from last time`;
+  }
+}
 
 function markDirty(f, dirty) {
   f.li?.classList.toggle("dirty", dirty);
@@ -1176,7 +1224,8 @@ function selectFile(i) {
   openSource(files[i].text);
 }
 
-async function setFiles(list, title) {
+// `dir` is the folder handle the list came from, remembered for Reopen.
+async function setFiles(list, title, dir = null) {
   list = list.filter((f) => DIAGRAM_EXT.test(f.name));
   if (!list.length) {
     errBox.textContent = "No .mmd / .mermaid files found.";
@@ -1188,7 +1237,9 @@ async function setFiles(list, title) {
   list.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
   files = list;
   current = -1;
+  if (dir) { remembered = dir; lastDir.set(dir); }
   renderFileList(title);
+  syncReopen();
   selectFile(0);
 }
 
@@ -1215,20 +1266,23 @@ async function entriesFromFileList(fl) {
   }));
 }
 
-document.getElementById("open").addEventListener("click", async (e) => {
-  // Shift-click picks individual files instead of a folder.
-  if (e.shiftKey) return document.getElementById("file-input").click();
+async function openFolder() {
   if (!window.showDirectoryPicker) return document.getElementById("dir-input").click();
   try {
     const dir = await showDirectoryPicker();
-    await setFiles(await walkDir(dir), dir.name);
+    await setFiles(await walkDir(dir), dir.name, dir);
   } catch (err) {
     if (err.name !== "AbortError") {
       errBox.textContent = String(err.message ?? err);
       errBox.style.display = "block";
     }
   }
-});
+}
+const openFiles = () => document.getElementById("file-input").click();
+// Header Open: folder; Shift-click picks individual files instead.
+document.getElementById("open").addEventListener("click", (e) => e.shiftKey ? openFiles() : openFolder());
+document.getElementById("open-folder").addEventListener("click", openFolder);
+document.getElementById("open-files").addEventListener("click", openFiles);
 for (const id of ["file-input", "dir-input"]) {
   const input = document.getElementById(id);
   input.addEventListener("change", async () => {
@@ -1239,12 +1293,45 @@ for (const id of ["file-input", "dir-input"]) {
   });
 }
 
+// ✕ closes the open files first; on the empty panel it forgets the folder.
 document.getElementById("files-close").addEventListener("click", () => {
-  if (files.some((f) => f.text !== f.saved) &&
-      !confirm("Discard unsaved changes?")) return;
-  files = [];
-  selectFile(-1);
-  renderFileList("Files");
+  if (files.length) {
+    if (files.some((f) => f.text !== f.saved) &&
+        !confirm("Discard unsaved changes?")) return;
+    files = [];
+    selectFile(-1);
+    renderFileList("Files");
+  } else {
+    remembered = null;
+    lastDir.clear();
+  }
+  syncReopen();
+});
+
+reopenBtn.addEventListener("click", async () => {
+  const dir = remembered;
+  try {
+    if ((await dir.requestPermission({ mode: "read" })) !== "granted") return;
+    await setFiles(await walkDir(dir), dir.name, dir);
+  } catch (err) {
+    const gone = err.name === "NotFoundError";
+    if (gone) { remembered = null; lastDir.clear(); syncReopen(); }
+    errBox.textContent = "reopen: " + (gone ? `folder "${dir.name}" no longer exists` : String(err.message ?? err));
+    errBox.style.display = "block";
+  }
+});
+
+// On load, offer the remembered folder; open it straight away when the
+// browser still has permission (e.g. Chrome's "allow on every visit").
+if (window.showDirectoryPicker) lastDir.get().then(async (dir) => {
+  if (!dir) return;
+  remembered = dir;
+  try {
+    if (!files.length && (await dir.queryPermission({ mode: "read" })) === "granted") {
+      await setFiles(await walkDir(dir), dir.name, dir);
+    }
+  } catch {} // folder moved or deleted — the Reopen button reports it
+  syncReopen();
 });
 
 async function saveCurrent() {
@@ -1309,7 +1396,8 @@ addEventListener("drop", async (e) => {
       const hs = (await Promise.all(handles)).filter(Boolean);
       const root = { values: async function* () { yield* hs; } };
       const single = hs.length === 1 && hs[0].kind === "directory";
-      return await setFiles(await walkDir(single ? hs[0] : root), single ? hs[0].name : "Dropped files");
+      return await setFiles(await walkDir(single ? hs[0] : root),
+        single ? hs[0].name : "Dropped files", single ? hs[0] : null);
     }
     if (entries.length) {
       const single = entries.length === 1 && entries[0].isDirectory;
