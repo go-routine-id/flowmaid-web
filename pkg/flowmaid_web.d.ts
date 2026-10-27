@@ -77,6 +77,13 @@ export function render_routed(source: string, positions: Float64Array): string;
  */
 export function render_svg(source: string): string;
 
+/**
+ * [`render_svg`] without the white canvas `<rect>`, so the SVG sits on
+ * the host page's own background (e.g. a dark theme). Text and edge
+ * colours are unchanged.
+ */
+export function render_svg_transparent(source: string): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
@@ -92,6 +99,7 @@ export interface InitOutput {
     readonly render_advance_text_svg: (a: number, b: number) => [number, number, number, number];
     readonly render_routed: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly render_svg: (a: number, b: number) => [number, number, number, number];
+    readonly render_svg_transparent: (a: number, b: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
