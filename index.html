@@ -27,7 +27,9 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<!-- Non-blocking: offline or where Google Fonts is unreachable the page
+     paints at once with the system font stacks in --body/--mono/--display. -->
+<link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
   /* Two modes: "paper" (light) and "ink" (dark). Square corners, 1px
      rules, no shadows or gradients — structure comes from lines. */
