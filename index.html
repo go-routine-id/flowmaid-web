@@ -7,288 +7,313 @@
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="%235468c7"/><stop offset="1" stop-color="%23199a8e"/></linearGradient></defs><rect x="2" y="2" width="28" height="28" rx="8" fill="url(%23g)"/><circle cx="11" cy="16" r="3.4" fill="white" fill-opacity=".95"/><circle cx="21" cy="16" r="3.4" fill="white" fill-opacity=".55"/></svg>'>
 <script>
   (function () {
-    var t = localStorage.getItem("theme");
+    var t = null;
+    try { t = localStorage.getItem("theme"); } catch (e) {}
     if (t) document.documentElement.dataset.theme = t;
   })();
-  function toggleTheme() {
-    var cur = document.documentElement.dataset.theme ||
+  function currentTheme() {
+    return document.documentElement.dataset.theme ||
       (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    var next = cur === "dark" ? "light" : "dark";
+  }
+  function setTheme(next) {
     document.documentElement.dataset.theme = next;
-    localStorage.setItem("theme", next);
+    try { localStorage.setItem("theme", next); } catch (e) {}
+    // Engines that bake colours into the SVG (mermaid) re-render on this.
+    dispatchEvent(new Event("themechange"));
+  }
+  function toggleTheme() {
+    setTheme(currentTheme() === "dark" ? "light" : "dark");
   }
 </script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Non-blocking: offline or where Google Fonts is unreachable the page
+     paints at once with the system font stacks in --body/--mono/--display. -->
+<link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Archivo:wght@800;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
+  /* Two modes: "paper" (light) and "ink" (dark). Square corners, 1px
+     rules, no shadows or gradients — structure comes from lines. */
   :root {
-    --ink: #232840; --ink-strong: #14172a; --line: #dde2f3; --accent: #5468c7;
-    --accent-2: #199a8e; --accent-glow: rgba(84,104,199,.28);
-    --bg: #eef1fb; --card: #ffffff; --panel: #fbfcff;
-    --muted: #697089;
-    --err: #d13438; --err-bg: #fff2f2; --err-line: #ffdbdb;
-    --shadow-sm: 0 1px 2px rgba(20,23,42,.06), 0 2px 10px rgba(20,23,42,.06);
-    --shadow-md: 0 2px 6px rgba(20,23,42,.07), 0 14px 34px rgba(20,23,42,.10);
+    --bg: #efece5; --panel: #e7e3da; --mass: #ddd8cc;
+    --ink: #15140f; --dim: #55534a; --muted: #86826f;
+    --line: #e2ded4; --line2: #cbc5b6;
+    --accent: #8839ef; --accent-ink: #ffffff;
+    --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+    --canvas: #f5f3ee; --dot: #d3cdbf; /* whiteboard behind the diagram */
+    --err: #c73e3e; --err-bg: color-mix(in srgb, #c73e3e 8%, var(--bg));
+    --ok: #2d9f52;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --body: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, sans-serif;
+    --display: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     color-scheme: light;
   }
   :root[data-theme="dark"] {
-    --ink: #dee3f4; --ink-strong: #ffffff; --line: #2c3350; --accent: #93a2ef;
-    --accent-2: #34c8ba; --accent-glow: rgba(147,162,239,.22);
-    --bg: #12141d; --card: #191d2b; --panel: #151927;
-    --muted: #9098b4;
-    --err: #ff8787; --err-bg: #2b1a20; --err-line: #573240;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,.35), 0 2px 10px rgba(0,0,0,.30);
-    --shadow-md: 0 2px 6px rgba(0,0,0,.40), 0 18px 40px rgba(0,0,0,.45);
+    --bg: #17171a; --panel: #1e1e22; --mass: #26262b;
+    --ink: #eae8ee; --dim: #cdccd2; --muted: #908f96;
+    --line: #26262b; --line2: #35353d;
+    --accent: #cba6f7; --accent-ink: #17171a;
+    --canvas: #141417; --dot: #2b2b31;
+    --err: #ff7a7a; --err-bg: color-mix(in srgb, #ff7a7a 8%, var(--bg));
+    --ok: #7ecf8a;
     color-scheme: dark;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --ink: #dee3f4; --ink-strong: #ffffff; --line: #2c3350; --accent: #93a2ef;
-      --accent-2: #34c8ba; --accent-glow: rgba(147,162,239,.22);
-      --bg: #12141d; --card: #191d2b; --panel: #151927;
-      --muted: #9098b4;
-      --err: #ff8787; --err-bg: #2b1a20; --err-line: #573240;
-      --shadow-sm: 0 1px 2px rgba(0,0,0,.35), 0 2px 10px rgba(0,0,0,.30);
-      --shadow-md: 0 2px 6px rgba(0,0,0,.40), 0 18px 40px rgba(0,0,0,.45);
+      --bg: #17171a; --panel: #1e1e22; --mass: #26262b;
+      --ink: #eae8ee; --dim: #cdccd2; --muted: #908f96;
+      --line: #26262b; --line2: #35353d;
+      --accent: #cba6f7; --accent-ink: #17171a;
+      --canvas: #141417; --dot: #2b2b31;
+      --err: #ff7a7a; --err-bg: color-mix(in srgb, #ff7a7a 8%, var(--bg));
+      --ok: #7ecf8a;
       color-scheme: dark;
     }
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
   body {
-    margin: 0;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-      "Helvetica Neue", Arial, sans-serif;
-    font-size: 14px; color: var(--ink);
+    margin: 0; font-family: var(--body); font-size: 14px; color: var(--ink);
     display: flex; flex-direction: column; height: 100vh; height: 100dvh;
-    background:
-      radial-gradient(900px 480px at 88% -12%, var(--accent-glow), transparent 62%),
-      radial-gradient(720px 420px at -8% 112%, rgba(31,166,153,.14), transparent 58%),
-      var(--bg);
+    background: var(--bg);
     -webkit-font-smoothing: antialiased;
   }
-  ::selection { background: var(--accent); color: #fff; }
+  ::selection { background: var(--accent); color: var(--accent-ink); }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--line) 80%, var(--muted));
-    border-radius: 999px; border: 3px solid transparent; background-clip: content-box;
-  }
+  ::-webkit-scrollbar-thumb { background: var(--line2); border: 3px solid transparent; background-clip: content-box; }
   ::-webkit-scrollbar-track { background: transparent; }
 
-  header, footer {
-    background: color-mix(in srgb, var(--card) 82%, transparent);
-    -webkit-backdrop-filter: blur(14px) saturate(1.5);
-    backdrop-filter: blur(14px) saturate(1.5);
-  }
+  /* ── Header ── */
   header {
-    display: flex; align-items: center; gap: 10px; padding: 11px 18px;
-    border-bottom: 1px solid var(--line);
-    box-shadow: var(--shadow-sm);
-    z-index: 1;
+    display: flex; align-items: center; gap: 8px; padding: 0 18px; min-height: 56px;
+    border-bottom: 1px solid var(--line2); flex-wrap: wrap; z-index: 1;
+    background: var(--bg);
   }
   header h1 {
-    font-size: 19px; margin: 0; letter-spacing: -.02em; font-weight: 800;
-    color: var(--accent);
+    font-family: var(--display); font-weight: 900; font-size: 22px;
+    letter-spacing: -.045em; margin: 0 6px 0 0; color: var(--ink);
   }
   header h1::after {
-    content: ""; display: inline-block; width: 7px; height: 7px;
-    margin-left: 7px; border-radius: 50%;
-    background: radial-gradient(circle at 32% 32%, var(--accent-2), var(--accent));
-    box-shadow: 0 0 0 3px var(--accent-glow);
+    content: ""; display: inline-block; width: 6px; height: 6px;
+    margin-left: 3px; background: var(--accent);
   }
-  header .sub { font-size: 12.5px; color: var(--muted); letter-spacing: -.005em; }
+  header .sub {
+    display: inline-flex; align-items: center; gap: 10px;
+    font: 500 10.5px var(--mono); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  header .sub::before { content: ""; width: 28px; height: 1px; background: var(--accent); }
   header .spacer { flex: 1; }
   header > a {
-    font-size: 13px; font-weight: 600; color: var(--accent);
-    text-decoration: none; padding: 6px 10px; border-radius: 8px;
-    transition: background-color .15s ease;
+    font: 500 11.5px var(--mono); letter-spacing: .07em; text-transform: uppercase;
+    color: var(--dim); text-decoration: none; padding: 7px 8px;
   }
-  header > a:hover { background: var(--accent-glow); }
+  header > a:hover { color: var(--ink); }
 
-  button, select {
-    font: inherit; font-size: 13px; font-weight: 600; padding: 7px 13px;
-    border-radius: 10px; border: 1px solid var(--line);
-    background: var(--card); color: var(--ink); cursor: pointer;
-    box-shadow: var(--shadow-sm);
-    transition: border-color .15s ease, box-shadow .15s ease,
-                transform .12s ease, background-color .15s ease, color .15s ease;
+  /* ── Controls ── */
+  button {
+    font: 500 11.5px var(--mono); letter-spacing: .07em; text-transform: uppercase;
+    padding: 7px 13px; border-radius: 0; border: 1px solid var(--line2);
+    background: transparent; color: var(--ink); cursor: pointer;
+    transition: border-color .12s ease, background-color .12s ease, color .12s ease;
   }
-  button:hover, select:hover {
-    border-color: var(--accent); color: var(--accent);
-    box-shadow: 0 0 0 4px var(--accent-glow);
+  button:hover { border-color: var(--ink); background: var(--mass); }
+  button:active { background: var(--line2); }
+  button:focus-visible, header > a:focus-visible, #editor:focus-visible, #file-list li:focus-visible {
+    outline: 1px solid var(--accent); outline-offset: 2px;
   }
-  button:active, select:active { transform: scale(.97); }
-  button:focus-visible, select:focus-visible, header > a:focus-visible,
-  #editor:focus-visible {
-    outline: 2px solid var(--accent); outline-offset: 2px;
+  #download { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  #download:hover { filter: brightness(1.08); }
+  #engine .tag {
+    margin-left: 7px; padding: 1px 6px; font-size: 10px;
+    background: var(--accent-soft); color: var(--accent);
   }
-  #download {
-    background: linear-gradient(96deg, var(--accent), var(--accent-2));
-    border-color: transparent; color: #fff;
+  body.engine-mermaid #relayout { display: none; }
+
+  /* Mode switch: INK | PAPER segment */
+  .modes { display: inline-flex; border: 1px solid var(--line2); }
+  .modes button {
+    border: 0; padding: 7px 10px; font-size: 10px; letter-spacing: .16em; color: var(--muted);
   }
-  #download:hover { color: #fff; filter: brightness(1.06); }
+  .modes button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+  /* ── Main layout ── */
   body.editor-hidden #editor { display: none; }
-  #toggle-editor[aria-pressed="false"] { color: var(--muted); border-style: dashed; }
-
-  /* ── Collapse handle riding the editor/view divider ── */
-  .seam-anchor { position: relative; width: 0; flex: none; }
-  .collapse-handle {
-    position: absolute; top: 50%; left: -13px;
-    margin-top: -27px; /* static centering — no transform, ever */
-    width: 26px; height: 54px; padding: 0;
-    display: inline-flex; align-items: center; justify-content: center;
-    border-radius: 9px; z-index: 4;
-    background: color-mix(in srgb, var(--card) 88%, transparent);
-    transition: background-color .15s ease, box-shadow .15s ease,
-                border-color .15s ease;
-  }
-  .collapse-handle:hover {
-    background: var(--card); border-color: var(--accent);
-    box-shadow: 0 0 0 4px var(--accent-glow), var(--shadow-md);
-  }
-  .collapse-handle svg { width: 14px; height: 14px; }
-  body.editor-hidden .collapse-handle { left: 12px; }
-  body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
-  body.editor-hidden .collapse-handle { left: 12px; }
-  body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
-
   main { display: flex; flex: 1; min-height: 0; position: relative; }
   #editor {
-    width: 38%; min-width: 280px; border: 0; border-right: 1px solid var(--line);
-    padding: 16px 18px; font: 500 13px/1.65 ui-monospace, Menlo, monospace;
-    resize: none; outline: none; color: var(--ink);
-    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    width: 38%; min-width: 280px; border: 0; border-right: 1px solid var(--line2);
+    padding: 16px 18px; font: 400 13px/1.65 var(--mono);
+    resize: none; outline: none; color: var(--ink); background: var(--panel);
     caret-color: var(--accent);
   }
   #view {
     flex: 1; overflow: hidden; position: relative; padding: 26px;
     touch-action: none; /* pointer-drag nodes on touch screens too */
-    background-image: radial-gradient(
-      color-mix(in srgb, var(--line) 66%, transparent) 1px, transparent 1px);
+    background: var(--canvas);
+    background-image: radial-gradient(var(--dot) 1px, transparent 1px);
     background-size: 22px 22px;
   }
   #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-  #zoombar {
-    position: absolute; right: 14px; bottom: 14px; z-index: 5;
-    display: flex; align-items: center; gap: 4px; padding: 4px;
-    border-radius: 12px; border: 1px solid var(--line);
-    background: color-mix(in srgb, var(--card) 88%, transparent);
-    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-    box-shadow: var(--shadow-sm);
+  /* Diagrams sit transparent on the dotted canvas. */
+  #stage > svg { height: auto; }
+  /* TODO(temporary): flowmaid paints a full-size white backdrop rect
+     first and has no dark palette; hide the backdrop, and in ink mode
+     invert the diagram on screen (Download SVG keeps the original
+     colours). Drop these rules and rebuild pkg/ once the engine ships
+     transparent-background and dark-palette options. */
+  body:not(.engine-mermaid) #stage > svg > rect:first-of-type:not([x]):not([y]) { fill: transparent; }
+  :root[data-theme="dark"] body:not(.engine-mermaid) #stage > svg {
+    filter: invert(.88) hue-rotate(180deg) saturate(1.3);
   }
-  #zoombar button { width: 30px; height: 30px; padding: 0; border-radius: 8px; }
-  #zoombar .pct {
-    min-width: 46px; text-align: center; font-size: 11.5px; font-weight: 700;
-    color: var(--muted); cursor: pointer; border: 0; background: none;
-    padding: 6px 4px; border-radius: 8px; box-shadow: none;
-  }
-  #zoombar .pct:hover { color: var(--accent); box-shadow: none; }
-  #view svg {
-    height: auto;
-    filter: drop-shadow(0 10px 28px rgba(20,23,42,.14));
-    border-radius: 12px;
-  }
-  :root[data-theme="dark"] #view svg { filter: drop-shadow(0 12px 30px rgba(0,0,0,.55)); }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) #view svg {
-      filter: drop-shadow(0 12px 30px rgba(0,0,0,.55));
+    :root:not([data-theme="light"]) body:not(.engine-mermaid) #stage > svg {
+      filter: invert(.88) hue-rotate(180deg) saturate(1.3);
     }
   }
 
+  /* Floating cards over the canvas */
+  #zoombar, #doc-title {
+    position: absolute; z-index: 5;
+    border: 1px solid var(--line2); background: var(--bg);
+  }
+  #zoombar { right: 14px; bottom: 14px; display: flex; align-items: stretch; }
+  #zoombar button { width: 34px; height: 32px; padding: 0; border: 0; border-left: 1px solid var(--line2); font-size: 13px; }
+  #zoombar button:first-child { border-left: 0; }
+  #zoombar #zoom-fit { width: auto; padding: 0 11px; font-size: 10.5px; }
+  #zoombar .pct { min-width: 54px; font-size: 10.5px; color: var(--muted); }
+  #zoombar .pct:hover { color: var(--ink); }
+  #doc-title {
+    left: 14px; top: 14px; max-width: calc(100% - 28px);
+    padding: 8px 12px; font: 500 12px var(--mono); color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    pointer-events: none;
+  }
+  #doc-title:empty { display: none; }
+
+  /* ── Collapse handle riding the editor/view divider ── */
+  .seam-anchor { position: relative; width: 0; flex: none; }
+  .collapse-handle {
+    position: absolute; top: 50%; left: -12px;
+    margin-top: -24px; /* static centering — no transform, ever */
+    width: 24px; height: 48px; padding: 0; z-index: 4;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--bg);
+  }
+  .collapse-handle svg { width: 14px; height: 14px; }
+  body.editor-hidden .collapse-handle { left: 12px; }
+  body.editor-hidden .collapse-handle svg { transform: scaleX(-1); }
+  #toggle-editor[aria-pressed="false"] { color: var(--muted); border-style: dashed; }
+
+  /* ── File sidebar (open folder / drop .mmd files) ── */
+  #files {
+    display: none; flex-direction: column; width: 220px; flex: none;
+    border-right: 1px solid var(--line2); background: var(--bg);
+  }
+  body.has-files #files { display: flex; }
+  #files .files-head {
+    display: flex; align-items: center; gap: 6px; padding: 10px 12px;
+    border-bottom: 1px solid var(--line2);
+    font: 500 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
+  }
+  #files .files-head span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #files .files-head button { padding: 3px 7px; font-size: 10px; }
+  #file-list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1; }
+  #file-list li {
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 12px; border-left: 2px solid transparent;
+    border-bottom: 1px solid var(--line); cursor: pointer;
+    font: 400 12px var(--mono); color: var(--dim); user-select: none;
+    overflow-wrap: anywhere;
+  }
+  #file-list li:hover { background: var(--panel); color: var(--ink); }
+  #file-list li[aria-current="true"] {
+    border-left-color: var(--accent); background: var(--accent-soft); color: var(--ink); font-weight: 600;
+  }
+  #file-list li .dir { color: var(--muted); font-weight: 400; }
+  #file-list li.dirty::after { content: "●"; margin-left: auto; color: var(--accent); font-size: 9px; }
+  #drop-hint {
+    display: none; position: fixed; inset: 10px; z-index: 20;
+    align-items: center; justify-content: center;
+    border: 1px dashed var(--accent);
+    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    font: 500 12px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--accent);
+    pointer-events: none;
+  }
+  body.dropping #drop-hint { display: flex; }
+
+  /* ── Error + footer ── */
   #error {
-    display: none; margin: 0 18px 12px; padding: 11px 18px;
-    font-size: 13px; font-weight: 500; color: var(--err);
-    background: var(--err-bg); border: 1px solid var(--err-line);
-    border-radius: 12px; box-shadow: var(--shadow-md);
+    display: none; margin: 0; padding: 10px 18px;
+    font: 500 12px var(--mono); color: var(--err);
+    background: var(--err-bg); border-top: 1px solid var(--err);
   }
   footer {
-    padding: 7px 18px; font-size: 12px; color: var(--muted);
-    border-top: 1px solid var(--line);
-    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+    padding: 0 18px; min-height: 34px; border-top: 1px solid var(--line2); background: var(--bg);
+    display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+    font: 400 10.5px var(--mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted);
   }
-  footer #version {
-    padding: 2px 10px; border-radius: 999px; font-weight: 600;
-    border: 1px solid var(--line); color: var(--accent);
-  }
-  footer a {
-    color: var(--muted); text-decoration: none; padding: 3px 8px;
-    border-radius: 8px; transition: color .15s ease, background-color .15s ease;
-  }
-  footer a:hover { color: var(--accent); background: var(--accent-glow); }
+  footer #version { color: var(--accent); margin-right: 8px; }
+  footer #version::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 7px; background: var(--ok); vertical-align: 1px; }
+  footer a { color: var(--muted); text-decoration: none; padding: 4px 8px; }
+  footer a:hover { color: var(--ink); }
 
-  /* ── Custom example dropdown ── */
-  header { flex-wrap: wrap; }
+  /* ── Example dropdown ── */
   .dd { position: relative; z-index: 6; }
   .dd-btn { display: inline-flex; align-items: center; gap: 8px; }
-  .dd-btn .chev {
-    width: 16px; height: 16px; flex: none;
-    transition: transform .18s ease; color: var(--muted);
-  }
+  .dd-btn .chev { width: 14px; height: 14px; flex: none; transition: transform .15s ease; color: var(--muted); }
   .dd.open .chev { transform: rotate(180deg); color: var(--accent); }
   .dd-menu {
-    position: absolute; top: calc(100% + 8px); right: 0;
-    margin: 0; padding: 6px; list-style: none; min-width: 230px;
-    max-height: 330px; max-width: min(86vw, 320px); overflow: auto;
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 14px; box-shadow: var(--shadow-md);
-    opacity: 0; transform: translateY(-6px); pointer-events: none;
-    transition: opacity .16s ease, transform .16s ease;
+    position: absolute; top: calc(100% + 6px); right: 0;
+    margin: 0; padding: 0; list-style: none; min-width: 240px;
+    max-height: 340px; max-width: min(86vw, 320px); overflow: auto;
+    background: var(--bg); border: 1px solid var(--line2);
+    opacity: 0; transform: translateY(-4px); pointer-events: none;
+    transition: opacity .14s ease, transform .14s ease;
   }
   .dd.open .dd-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
   .dd-menu li {
-    display: flex; align-items: center; gap: 9px;
-    padding: 8px 11px; border-radius: 9px; font-size: 13px; font-weight: 500;
-    cursor: pointer; user-select: none;
+    padding: 9px 12px; border-left: 2px solid transparent; border-bottom: 1px solid var(--line);
+    font: 400 12px var(--mono); color: var(--dim); cursor: pointer; user-select: none;
   }
-  .dd-menu li::before {
-    content: ""; width: 6px; height: 6px; border-radius: 50%;
-    background: var(--line); transition: background-color .15s ease, transform .15s ease;
-  }
-  .dd-menu li:hover { background: var(--accent-glow); }
-  .dd-menu li[aria-selected="true"] {
-    color: var(--accent); font-weight: 700;
-    background: var(--accent-glow);
-  }
-  .dd-menu li[aria-selected="true"]::before {
-    background: linear-gradient(96deg, var(--accent), var(--accent-2));
-    transform: scale(1.25);
-  }
-  .dd-menu li[aria-current="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .dd-menu li:last-child { border-bottom: 0; }
+  .dd-menu li:hover { background: var(--panel); color: var(--ink); }
+  .dd-menu li[aria-selected="true"] { border-left-color: var(--accent); color: var(--ink); font-weight: 600; background: var(--accent-soft); }
+  .dd-menu li[aria-current="true"] { outline: 1px solid var(--accent); outline-offset: -1px; }
 
   /* ── Responsive ── */
+  @media (max-width: 1180px) { header .sub { display: none; } }
   @media (max-width: 860px) {
     main { flex-direction: column; }
+    #files { order: 0; width: auto; max-height: 26vh; border-right: 0; border-bottom: 1px solid var(--line2); }
     #editor {
       order: 3; width: auto; min-width: 0;
       height: 36vh; height: 36dvh; flex: none;
-      border-right: 0; border-top: 1px solid var(--line);
+      border-right: 0; border-top: 1px solid var(--line2);
       resize: vertical; /* drag the divider taller if needed */
     }
     #view { order: 1; flex: 1; min-height: 0; padding: 14px; background-size: 18px 18px; }
-
     .seam-anchor { order: 2; height: 0; align-self: stretch; }
-    .collapse-handle { top: 0; margin-top: -27px; }
-    body.editor-hidden .collapse-handle { left: 12px; margin-top: -64px; }
+    .collapse-handle { top: 0; margin-top: -24px; }
+    body.editor-hidden .collapse-handle { left: 12px; margin-top: -60px; }
   }
   @media (max-width: 720px) {
-    header { gap: 8px; padding: 10px 12px; }
-    header .sub { display: none; }
-    button, select, .dd-btn { font-size: 12.5px; padding: 6px 10px; border-radius: 9px; }
-    #error { margin: 0 10px 10px; padding: 10px 14px; }
-    footer { justify-content: center; gap: 4px; font-size: 11.5px; padding-inline: 10px; }
+    header { gap: 6px; padding: 8px 12px; }
+    button { font-size: 10.5px; padding: 6px 9px; }
+    footer { justify-content: center; padding-inline: 10px; }
   }
-
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; animation: none !important; }
-    html { scroll-behavior: auto; }
   }
 </style>
 </head>
 <body>
 <header>
   <h1>flowmaid</h1>
-  <span class="sub">Mermaid-like diagrams, rendered by pure Rust in your browser — drag the nodes!</span>
+  <span class="sub">Mermaid-like diagrams · pure Rust · in your browser</span>
   <span class="spacer"></span>
   <a href="/flowmaid/docs/">Docs</a>
-  <button id="theme" title="Toggle dark mode" onclick="toggleTheme()">🌓</button>
+  <div class="modes" role="group" aria-label="Colour mode">
+    <button data-mode="dark" title="Ink — dark mode (T)" onclick="setTheme('dark')">Ink</button>
+    <button data-mode="light" title="Paper — light mode (T)" onclick="setTheme('light')">Paper</button>
+  </div>
   <div class="dd" id="examples-dd">
     <button id="examples-btn" class="dd-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="Example diagram">
       <span id="examples-label">Flowchart</span>
@@ -307,10 +332,19 @@
       <li role="option" data-value="nested_horizontal">Nested horizontal lanes</li>
     </ul>
   </div>
+  <button id="open" title="Open a folder of .mmd files (Shift: pick files) — or drop files anywhere">Open</button>
+  <button id="save" title="Save to file (Ctrl/⌘+S)" hidden>Save</button>
+  <button id="engine" title="Switch render engine (E)">Engine<span class="tag">flowmaid</span></button>
   <button id="relayout">Auto layout</button>
   <button id="download">Download SVG</button>
 </header>
 <main>
+  <aside id="files" aria-label="Opened diagram files">
+    <div class="files-head"><span id="files-title">Files</span><button id="files-close" title="Close files">✕</button></div>
+    <ul id="file-list"></ul>
+  </aside>
+  <input id="file-input" type="file" accept=".mmd,.mermaid" multiple hidden>
+  <input id="dir-input" type="file" webkitdirectory multiple hidden>
   <textarea id="editor" spellcheck="false"></textarea>
   <div class="seam-anchor">
     <button id="toggle-editor" class="collapse-handle" aria-pressed="true" title="Show / hide code panel" aria-label="Show / hide code panel">
@@ -321,6 +355,7 @@
   </div>
   <div id="view">
     <div id="stage"></div>
+    <div id="doc-title"></div>
     <div id="zoombar">
       <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
       <button id="zoom-pct" class="pct" title="Reset to 100%">100%</button>
@@ -330,6 +365,7 @@
   </div>
 </main>
 <div id="error"></div>
+<div id="drop-hint">Drop .mmd files or a folder to open them</div>
 <footer>
   <span id="version">loading engine…</span>
   <a href="/flowmaid/docs/">documentation</a>
@@ -522,18 +558,135 @@ function zoomAt(cx, cy, factor) {
   applyCam();
 }
 
+// Below this zoom node labels stop being legible, so a freshly opened
+// wide diagram starts here, top-aligned, instead of shrunk to fit.
+const Z_READABLE = 0.62;
+
 // Fit the current diagram inside the viewport with a little margin.
-function fitView(zCap = 1.5) {
+// `readable` keeps the zoom at Z_READABLE or above (initial view only;
+// the Fit button always shows the whole diagram).
+function fitView(zCap = 1.5, readable = false) {
   const svg = stage.querySelector("svg");
   if (!svg) return;
-  const w = parseFloat(svg.getAttribute("width")) || svg.viewBox.baseVal.width;
-  const h = parseFloat(svg.getAttribute("height")) || svg.viewBox.baseVal.height;
+  const w = parseFloat(svg.getAttribute("width")) || svg.viewBox.baseVal?.width;
+  const h = parseFloat(svg.getAttribute("height")) || svg.viewBox.baseVal?.height;
   if (!(w > 0 && h > 0)) return;
   const vr = view.getBoundingClientRect();
   cam.z = Math.min(Z_MAX, Math.max(Z_MIN, Math.min((vr.width - 56) / w, (vr.height - 56) / h, zCap)));
   cam.x = (vr.width - w * cam.z) / 2;
   cam.y = (vr.height - h * cam.z) / 2;
+  if (readable && cam.z < Z_READABLE) {
+    cam.z = Z_READABLE;
+    cam.x = Math.max(28, (vr.width - w * cam.z) / 2);
+    // Clear the floating file-title card when one is shown.
+    cam.y = document.getElementById("doc-title").textContent ? 64 : 28;
+  }
   applyCam();
+}
+
+// ── Render engine: flowmaid (wasm, bundled) or mermaid.js ──
+// Mermaid is ~2.5 MB, so it is fetched from the CDN only when the
+// user picks it — the default playground stays zero-dep.
+const MERMAID_VERSION = "11.4.1";
+const MERMAID_URL = `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs`;
+const ENGINES = ["flowmaid", "mermaid"];
+let engine = "flowmaid";
+try { engine = localStorage.getItem("engine") || engine; } catch {}
+const engineParam = new URLSearchParams(location.search).get("engine");
+if (engineParam) engine = engineParam;
+if (!ENGINES.includes(engine)) engine = "flowmaid";
+
+function isDark() {
+  const t = document.documentElement.dataset.theme;
+  return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+let mermaidLib = null;
+async function loadMermaid() {
+  if (!mermaidLib) mermaidLib = (await import(MERMAID_URL)).default;
+  return mermaidLib;
+}
+
+function setupMermaid(m) {
+  const dark = isDark();
+  const P = dark
+    ? { node: "#1e1e22", border: "#3c3c45", text: "#eae8ee", line: "#908f96", cluster: "#19191c", clusterBorder: "#2e2e35", label: "#17171a", note: "#2a2520" }
+    : { node: "#fbfaf7", border: "#cbc5b6", text: "#15140f", line: "#86826f", cluster: "#ece8df", clusterBorder: "#d6d1c4", label: "#f5f3ee", note: "#f6edd3" };
+  m.initialize({
+    startOnLoad: false, securityLevel: "strict", maxTextSize: 500000, maxEdges: 2000,
+    theme: "base", fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, sans-serif",
+    themeVariables: {
+      fontSize: "14px", darkMode: dark, background: "transparent",
+      primaryColor: P.node, primaryBorderColor: P.border, primaryTextColor: P.text,
+      secondaryColor: P.cluster, tertiaryColor: P.cluster, lineColor: P.line, textColor: P.text,
+      clusterBkg: P.cluster, clusterBorder: P.clusterBorder, edgeLabelBackground: P.label, titleColor: P.text,
+      noteBkgColor: P.note, noteTextColor: P.text, actorBkg: P.node, actorBorder: P.border, actorTextColor: P.text,
+      signalColor: P.text, signalTextColor: P.text, labelBoxBkgColor: P.cluster,
+      sequenceNumberColor: dark ? "#141821" : "#fff",
+    },
+    themeCSS: `
+      .node rect, .node polygon, .node path { stroke-width:1.2px; }
+      .cluster rect { rx:0; ry:0; stroke-width:1px; }
+      .cluster-label .nodeLabel, .cluster span { font-weight:600; }
+      .edgeLabel, .edgeLabel p { font-size:12px; color:${P.text}; }
+    `,
+    flowchart: { htmlLabels: true, curve: "basis", padding: 14, nodeSpacing: 42, rankSpacing: 84, wrappingWidth: 260 },
+    sequence: { actorMargin: 60, mirrorActors: false },
+  });
+}
+
+let mermaidSeq = 0;
+let fitOnRender = false; // set by openSource until a diagram lands
+// Latest-wins: a slow render of stale text must not overwrite a newer one.
+async function renderMermaid(src) {
+  const seq = ++mermaidSeq;
+  try {
+    const m = await loadMermaid();
+    if (seq !== mermaidSeq) return;
+    setupMermaid(m);
+    const id = "mmd-" + seq;
+    let svg;
+    try {
+      ({ svg } = await m.render(id, src));
+    } finally {
+      document.getElementById(id)?.remove();
+      document.getElementById("d" + id)?.remove();
+    }
+    if (seq !== mermaidSeq) return;
+    stage.innerHTML = svg;
+    // Mermaid sizes its SVG with CSS (width=100%, max-width); the camera
+    // needs real pixel width/height, so take them from the viewBox.
+    const el = stage.querySelector("svg");
+    const vb = el?.viewBox.baseVal;
+    if (vb?.width > 0 && vb.height > 0) {
+      el.removeAttribute("style");
+      el.setAttribute("width", vb.width);
+      el.setAttribute("height", vb.height);
+    }
+    errBox.style.display = "none";
+    // A render superseded mid-open leaves the fit to whichever one wins.
+    if (fitOnRender) {
+      fitOnRender = false;
+      fitView(1.5, true);
+    } else {
+      applyCam();
+    }
+  } catch (e) {
+    if (seq !== mermaidSeq) return;
+    errBox.textContent = "mermaid: " + String(e.message ?? e);
+    errBox.style.display = "block";
+  }
+}
+
+function showVersion() {
+  document.getElementById("version").textContent = engine === "mermaid"
+    ? `mermaid v${MERMAID_VERSION} · CDN`
+    : `engine v${engine_version()} · wasm`;
+}
+
+function applyEngineUI() {
+  document.body.classList.toggle("engine-mermaid", engine === "mermaid");
+  document.querySelector("#engine .tag").textContent = engine;
 }
 
 view.addEventListener("wheel", (e) => {
@@ -568,7 +721,21 @@ function isSwimlaneText(src) {
   return src.trim().startsWith("swimlane");
 }
 
+// Returns a promise only for the async mermaid path; callers that fit
+// the view afterwards await it either way.
 function rebuild(src) {
+  if (engine === "mermaid") {
+    good = null; // nothing draggable: mermaid owns its layout
+    if (isAdvance(src) || isSwimlaneText(src)) {
+      mermaidSeq++;
+      stage.innerHTML = "";
+      errBox.textContent = "Swimlane diagrams are flowmaid-only — switch the engine (E) to render them.";
+      errBox.style.display = "block";
+      return;
+    }
+    return renderMermaid(src);
+  }
+  mermaidSeq++; // drop any in-flight mermaid render
   try {
     // Positions semantics differ between advance (offset-x + y) and
     // other diagrams (absolute centres), so drop remembered drags when
@@ -819,16 +986,36 @@ try {
 // ── Wiring ──
 let deb;
 editor.addEventListener("input", () => {
+  const f = files[current];
+  if (f) {
+    f.text = editor.value;
+    markDirty(f, f.text !== f.saved);
+  }
   clearTimeout(deb);
   deb = setTimeout(() => rebuild(editor.value), 120);
 });
 
+// Load a source as a fresh document: new layout, no carried-over drags.
+async function openSource(src) {
+  editor.value = src;
+  good = null;
+  savedPos.clear();
+  // Clear first: if the new source fails to parse, the previous
+  // document's diagram must not stay up (or be downloaded) under its name.
+  stage.innerHTML = "";
+  fitOnRender = true;
+  await rebuild(src);
+  // Flowmaid renders synchronously; a pending mermaid render fits itself.
+  if (fitOnRender && (engine !== "mermaid" || stage.querySelector("svg"))) {
+    fitOnRender = false;
+    fitView(1.5, true);
+  }
+}
+
 // ── Custom example dropdown ──
 function applyExample(value) {
-  editor.value = EXAMPLES[value];
-  good = null; // fresh example, fresh layout
-  rebuild(editor.value);
-  fitView();
+  selectFile(-1);
+  openSource(EXAMPLES[value]);
 }
 
 const dd = document.getElementById("examples-dd");
@@ -895,23 +1082,293 @@ document.getElementById("relayout").addEventListener("click", () => {
   render();
 });
 
-document.getElementById("download").addEventListener("click", () => {
-  const svg = view.querySelector("svg");
-  if (!svg) return;
-  const blob = new Blob([svg.outerHTML], { type: "image/svg+xml" });
+function downloadBlob(text, type, name) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "diagram.svg";
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+const baseName = () => (files[current]?.name ?? "diagram").replace(/\.[^.]+$/, "");
+
+document.getElementById("download").addEventListener("click", () => {
+  const svg = stage.querySelector("svg");
+  if (!svg) return;
+  downloadBlob(svg.outerHTML, "image/svg+xml", baseName() + ".svg");
+});
+
+// ── Engine switch ──
+function setEngine(next) {
+  engine = next;
+  try { localStorage.setItem("engine", engine); } catch {}
+  applyEngineUI();
+  showVersion();
+  openSource(editor.value);
+}
+document.getElementById("engine").addEventListener("click", () =>
+  setEngine(engine === "flowmaid" ? "mermaid" : "flowmaid"));
+
+function syncModeButtons() {
+  for (const b of document.querySelectorAll(".modes button")) {
+    b.setAttribute("aria-pressed", String(b.dataset.mode === currentTheme()));
+  }
+}
+syncModeButtons();
+
+// Mermaid bakes theme colours into the SVG, so re-render on a switch.
+function onThemeChange() {
+  syncModeButtons();
+  if (engine === "mermaid") rebuild(editor.value);
+}
+addEventListener("themechange", onThemeChange);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", onThemeChange);
+
+// ── Files: open a folder or drop .mmd files, edit, save back ──
+// { name, path, text, saved, handle? } — `handle` (File System Access
+// API, Chromium) enables saving in place; without it Save downloads.
+const DIAGRAM_EXT = /\.(mmd|mermaid)$/i;
+let files = [];
+let current = -1;
+const fileList = document.getElementById("file-list");
+const saveBtn = document.getElementById("save");
+
+function markDirty(f, dirty) {
+  f.li?.classList.toggle("dirty", dirty);
+}
+
+function renderFileList(title) {
+  fileList.textContent = "";
+  files.forEach((f, i) => {
+    const li = document.createElement("li");
+    const dir = f.path.slice(0, f.path.length - f.name.length);
+    if (dir) {
+      const d = document.createElement("span");
+      d.className = "dir";
+      d.textContent = dir;
+      li.append(d);
+    }
+    li.append(f.name);
+    li.title = f.path;
+    li.tabIndex = 0;
+    li.addEventListener("click", () => selectFile(i));
+    li.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectFile(i); }
+    });
+    f.li = li;
+    markDirty(f, f.text !== f.saved);
+    fileList.append(li);
+  });
+  document.getElementById("files-title").textContent = title;
+  document.body.classList.toggle("has-files", files.length > 0);
+}
+
+function selectFile(i) {
+  if (i === current && i >= 0) return; // already showing it — keep the camera
+  current = i;
+  document.getElementById("doc-title").textContent = i < 0 ? "" : files[i].path;
+  files.forEach((f, j) => f.li.setAttribute("aria-current", String(j === i)));
+  saveBtn.hidden = i < 0;
+  if (i < 0) return;
+  files[i].li.scrollIntoView({ block: "nearest" });
+  for (const it of ddItems) it.setAttribute("aria-selected", "false");
+  ddLabel.textContent = "Examples";
+  openSource(files[i].text);
+}
+
+async function setFiles(list, title) {
+  list = list.filter((f) => DIAGRAM_EXT.test(f.name));
+  if (!list.length) {
+    errBox.textContent = "No .mmd / .mermaid files found.";
+    errBox.style.display = "block";
+    return;
+  }
+  if (files.some((f) => f.text !== f.saved) &&
+      !confirm("Discard unsaved changes in the currently opened files?")) return;
+  list.sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+  files = list;
+  current = -1;
+  renderFileList(title);
+  selectFile(0);
+}
+
+async function entryFromHandle(handle, path) {
+  const text = await (await handle.getFile()).text();
+  return { name: handle.name, path, text, saved: text, handle };
+}
+
+async function walkDir(dir, prefix = "") {
+  const out = [];
+  for await (const h of dir.values()) {
+    if (h.kind === "directory") out.push(...await walkDir(h, prefix + h.name + "/"));
+    else if (DIAGRAM_EXT.test(h.name)) out.push(await entryFromHandle(h, prefix + h.name));
+  }
+  return out;
+}
+
+async function entriesFromFileList(fl) {
+  return Promise.all([...fl].filter((f) => DIAGRAM_EXT.test(f.name)).map(async (f) => {
+    const text = await f.text();
+    // webkitdirectory paths start with the picked folder's name — drop it.
+    const path = (f.webkitRelativePath || f.name).split("/").slice(1).join("/") || f.name;
+    return { name: f.name, path, text, saved: text };
+  }));
+}
+
+document.getElementById("open").addEventListener("click", async (e) => {
+  // Shift-click picks individual files instead of a folder.
+  if (e.shiftKey) return document.getElementById("file-input").click();
+  if (!window.showDirectoryPicker) return document.getElementById("dir-input").click();
+  try {
+    const dir = await showDirectoryPicker();
+    await setFiles(await walkDir(dir), dir.name);
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      errBox.textContent = String(err.message ?? err);
+      errBox.style.display = "block";
+    }
+  }
+});
+for (const id of ["file-input", "dir-input"]) {
+  const input = document.getElementById(id);
+  input.addEventListener("change", async () => {
+    const title = id === "dir-input" && input.files[0]
+      ? input.files[0].webkitRelativePath.split("/")[0] : "Files";
+    await setFiles(await entriesFromFileList(input.files), title);
+    input.value = "";
+  });
+}
+
+document.getElementById("files-close").addEventListener("click", () => {
+  if (files.some((f) => f.text !== f.saved) &&
+      !confirm("Discard unsaved changes?")) return;
+  files = [];
+  selectFile(-1);
+  renderFileList("Files");
+});
+
+async function saveCurrent() {
+  const f = files[current];
+  if (!f) return;
+  // Snapshot now: edits typed while the write is in flight stay dirty.
+  const text = f.text;
+  try {
+    if (f.handle?.createWritable) {
+      if ((await f.handle.requestPermission?.({ mode: "readwrite" })) === "denied") {
+        throw new Error("Write permission denied — use Download instead.");
+      }
+      const w = await f.handle.createWritable();
+      await w.write(text);
+      await w.close();
+    } else {
+      downloadBlob(text, "text/plain", f.name);
+    }
+    f.saved = text;
+    markDirty(f, f.text !== f.saved);
+  } catch (err) {
+    errBox.textContent = "save: " + String(err.message ?? err);
+    errBox.style.display = "block";
+  }
+}
+saveBtn.addEventListener("click", saveCurrent);
+
+addEventListener("beforeunload", (e) => {
+  if (files.some((f) => f.text !== f.saved)) {
+    e.preventDefault();
+    e.returnValue = ""; // older browsers only show the prompt with this
+  }
+});
+
+// Drag & drop files or folders anywhere on the page.
+let dragDepth = 0;
+const hasFiles = (e) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+addEventListener("dragenter", (e) => {
+  if (!hasFiles(e)) return;
+  dragDepth++;
+  document.body.classList.add("dropping");
+});
+addEventListener("dragleave", () => {
+  if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dropping"); }
+});
+addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+addEventListener("drop", async (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  document.body.classList.remove("dropping");
+  const items = [...e.dataTransfer.items].filter((it) => it.kind === "file");
+  // Items must be read synchronously, before the first await.
+  // Chromium hands out writable handles (folders included); elsewhere
+  // walk FileSystemEntry trees (read-only, Save downloads).
+  const handles = items[0]?.getAsFileSystemHandle
+    ? items.map((it) => it.getAsFileSystemHandle()) : null;
+  const entries = handles ? null : items.map((it) => it.webkitGetAsEntry?.()).filter(Boolean);
+  const fallback = [...e.dataTransfer.files];
+  try {
+    if (handles) {
+      const hs = (await Promise.all(handles)).filter(Boolean);
+      const root = { values: async function* () { yield* hs; } };
+      const single = hs.length === 1 && hs[0].kind === "directory";
+      return await setFiles(await walkDir(single ? hs[0] : root), single ? hs[0].name : "Dropped files");
+    }
+    if (entries.length) {
+      const single = entries.length === 1 && entries[0].isDirectory;
+      const out = [];
+      for (const en of entries) out.push(...await walkEntry(en, en.isDirectory && !single ? en.name + "/" : ""));
+      return await setFiles(out, single ? entries[0].name : "Dropped files");
+    }
+    await setFiles(await entriesFromFileList(fallback), "Dropped files");
+  } catch (err) {
+    errBox.textContent = "drop: " + String(err.message ?? err);
+    errBox.style.display = "block";
+  }
+});
+
+// FileSystemEntry walk for browsers without getAsFileSystemHandle.
+async function walkEntry(entry, prefix) {
+  if (entry.isFile) {
+    if (!DIAGRAM_EXT.test(entry.name)) return [];
+    const file = await new Promise((ok, fail) => entry.file(ok, fail));
+    const text = await file.text();
+    return [{ name: entry.name, path: prefix + entry.name, text, saved: text }];
+  }
+  const reader = entry.createReader();
+  const out = [];
+  for (;;) {
+    // readEntries returns results in batches until it yields an empty one.
+    const batch = await new Promise((ok, fail) => reader.readEntries(ok, fail));
+    if (!batch.length) break;
+    for (const child of batch) out.push(...await walkEntry(child, child.isDirectory ? prefix + child.name + "/" : prefix));
+  }
+  return out;
+}
+
+// ── Keyboard: E engine · T theme · F fit · ↑/↓ (j/k) files · ⌘S save ──
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s" && current >= 0) {
+    e.preventDefault();
+    saveCurrent();
+    return;
+  }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.target.closest?.("textarea, input, .dd")) return;
+  const k = e.key;
+  if (k === "e" || k === "E") document.getElementById("engine").click();
+  else if (k === "t" || k === "T") toggleTheme();
+  else if (k === "f" || k === "F") fitView();
+  else if (files.length && (k === "ArrowDown" || k === "j")) {
+    e.preventDefault();
+    selectFile(Math.min(files.length - 1, current + 1));
+  } else if (files.length && (k === "ArrowUp" || k === "k")) {
+    e.preventDefault();
+    selectFile(Math.max(0, current - 1));
+  }
 });
 
 await init();
-document.getElementById("version").textContent =
-  `engine v${engine_version()} · wasm`;
-editor.value = EXAMPLES.flow;
-rebuild(editor.value);
-fitView();
+applyEngineUI();
+showVersion();
+openSource(EXAMPLES.flow);
 </script>
 </body>
 </html>
