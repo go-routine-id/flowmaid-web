@@ -155,13 +155,18 @@
   /* Diagrams sit transparent on the dotted canvas. */
   #stage > svg { height: auto; }
   /* TODO(temporary): flowmaid paints a full-size white backdrop rect
-     first; hide it until the engine ships its transparent-background
-     option, then drop these rules and rebuild pkg/. Light mode only:
-     flowmaid's dark ink is unreadable on the ink canvas, so there the
-     white backdrop stays as a paper sheet. */
-  :root[data-theme="light"] #stage > svg > rect:first-of-type:not([x]):not([y]) { fill: transparent; }
-  @media (prefers-color-scheme: light) {
-    :root:not([data-theme="dark"]) #stage > svg > rect:first-of-type:not([x]):not([y]) { fill: transparent; }
+     first and has no dark palette; hide the backdrop, and in ink mode
+     invert the diagram on screen (Download SVG keeps the original
+     colours). Drop these rules and rebuild pkg/ once the engine ships
+     transparent-background and dark-palette options. */
+  body:not(.engine-mermaid) #stage > svg > rect:first-of-type:not([x]):not([y]) { fill: transparent; }
+  :root[data-theme="dark"] body:not(.engine-mermaid) #stage > svg {
+    filter: invert(.88) hue-rotate(180deg) saturate(1.3);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) body:not(.engine-mermaid) #stage > svg {
+      filter: invert(.88) hue-rotate(180deg) saturate(1.3);
+    }
   }
 
   /* Floating cards over the canvas */
