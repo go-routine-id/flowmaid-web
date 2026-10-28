@@ -42,6 +42,10 @@
     --canvas: #f5f3ee; --dot: #d3cdbf; /* whiteboard behind the diagram */
     --err: #c73e3e; --err-bg: color-mix(in srgb, #c73e3e 8%, var(--bg));
     --ok: #2d9f52;
+    /* editor syntax colours */
+    --hl-hd: var(--accent); --hl-kw: #1d5ad6; --hl-dir: #0e6f7c;
+    --hl-str: #2d7a3e; --hl-txt: #6b5300; --hl-op: #b54a12;
+    --hl-num: #b02a4a; --hl-cmt: var(--muted); --hl-punct: var(--dim);
     --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     --body: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, sans-serif;
     --display: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -55,6 +59,8 @@
     --canvas: #141417; --dot: #2b2b31;
     --err: #ff7a7a; --err-bg: color-mix(in srgb, #ff7a7a 8%, var(--bg));
     --ok: #7ecf8a;
+    --hl-kw: #89b4fa; --hl-dir: #94e2d5; --hl-str: #a6e3a1;
+    --hl-txt: #f9e2af; --hl-op: #fab387; --hl-num: #f38ba8;
     color-scheme: dark;
   }
   @media (prefers-color-scheme: dark) {
@@ -66,6 +72,8 @@
       --canvas: #141417; --dot: #2b2b31;
       --err: #ff7a7a; --err-bg: color-mix(in srgb, #ff7a7a 8%, var(--bg));
       --ok: #7ecf8a;
+      --hl-kw: #89b4fa; --hl-dir: #94e2d5; --hl-str: #a6e3a1;
+      --hl-txt: #f9e2af; --hl-op: #fab387; --hl-num: #f38ba8;
       color-scheme: dark;
     }
   }
@@ -117,11 +125,15 @@
   }
   button:hover { border-color: var(--ink); background: var(--mass); }
   button:active { background: var(--line2); }
-  button:focus-visible, header > a:focus-visible, #editor:focus-visible, #file-list li:focus-visible {
+  button:focus-visible, header > a:focus-visible, #editor-wrap:focus-within, #file-list li:focus-visible {
     outline: 1px solid var(--accent); outline-offset: 2px;
   }
-  #download { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-  #download:hover { filter: brightness(1.08); }
+  .split { display: inline-flex; }
+  .split > button { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .split > button:hover { filter: brightness(1.08); }
+  .split > .dd-btn { padding-inline: 7px; border-left-color: color-mix(in srgb, var(--accent-ink) 35%, var(--accent)); }
+  .split > .dd-btn .chev, .split.open > .dd-btn .chev { color: var(--accent-ink); }
+  #download { min-width: 13.5ch; }
   #engine .tag {
     margin-left: 7px; padding: 1px 6px; font-size: 10px;
     background: var(--accent-soft); color: var(--accent);
@@ -136,14 +148,38 @@
   .modes button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 
   /* ── Main layout ── */
-  body.editor-hidden #editor { display: none; }
+  body.editor-hidden #editor-wrap { display: none; }
   main { display: flex; flex: 1; min-height: 0; position: relative; }
-  #editor {
-    width: 38%; min-width: 280px; border: 0; border-right: 1px solid var(--line2);
-    padding: 16px 18px; font: 400 13px/1.65 var(--mono);
-    resize: none; outline: none; color: var(--ink); background: var(--panel);
-    caret-color: var(--accent);
+  #editor-wrap {
+    position: relative; overflow: hidden;
+    width: 38%; min-width: 280px; border-right: 1px solid var(--line2);
+    background: var(--panel); outline-offset: -1px;
   }
+  /* The textarea's text is transparent; the highlighted <pre> behind it
+     draws the glyphs. Both share font, padding and wrapping; JS widens
+     the <pre>'s right padding by the textarea's scrollbar so every
+     character lands on the same pixel. */
+  #editor, #hl {
+    position: absolute; inset: 0; margin: 0; border: 0;
+    padding: 16px 18px; font: 400 13px/1.65 var(--mono); tab-size: 4;
+    white-space: pre-wrap; overflow-wrap: break-word; word-break: normal;
+  }
+  #hl { color: var(--ink); pointer-events: none; overflow: hidden; }
+  #editor {
+    overflow-y: auto; overflow-x: hidden;
+    resize: none; outline: none; background: transparent;
+    color: transparent; caret-color: var(--accent);
+  }
+  #editor::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); color: transparent; }
+  #hl .hd { color: var(--hl-hd); font-weight: 600; }
+  #hl .kw { color: var(--hl-kw); }
+  #hl .dir { color: var(--hl-dir); }
+  #hl .str { color: var(--hl-str); }
+  #hl .txt { color: var(--hl-txt); }
+  #hl .op { color: var(--hl-op); }
+  #hl .num { color: var(--hl-num); }
+  #hl .cmt { color: var(--hl-cmt); font-style: italic; }
+  #hl .pn { color: var(--hl-punct); }
   #view {
     flex: 1; overflow: hidden; position: relative; padding: 26px;
     touch-action: none; /* pointer-drag nodes on touch screens too */
@@ -273,6 +309,7 @@
     opacity: 0; transform: translateY(-4px); pointer-events: none;
     transition: opacity .14s ease, transform .14s ease;
   }
+  .dd-menu.flip { right: auto; left: 0; } /* button wrapped to the left edge */
   .dd.open .dd-menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
   .dd-menu li {
     padding: 9px 12px; border-left: 2px solid transparent; border-bottom: 1px solid var(--line);
@@ -284,13 +321,13 @@
   .dd-menu li[aria-current="true"] { outline: 1px solid var(--accent); outline-offset: -1px; }
 
   /* ── Responsive ── */
-  @media (max-width: 1180px) { header .sub { display: none; } }
+  @media (max-width: 1480px) { header .sub { display: none; } }
   @media (max-width: 860px) {
     main { flex-direction: column; }
     #files { order: 0; width: auto; max-height: 26vh; border-right: 0; border-bottom: 1px solid var(--line2); }
     /* No room for an empty panel on phones; the header Open still works. */
     body:not(.has-files):not(.has-remembered) #files { display: none; }
-    #editor {
+    #editor-wrap {
       order: 3; width: auto; min-width: 0;
       height: 36vh; height: 36dvh; flex: none;
       border-right: 0; border-top: 1px solid var(--line2);
@@ -343,7 +380,18 @@
   <button id="save" title="Save to file (Ctrl/⌘+S)" hidden>Save</button>
   <button id="engine" title="Switch render engine (E)">Engine<span class="tag">flowmaid</span></button>
   <button id="relayout">Auto layout</button>
-  <button id="download">Download SVG</button>
+  <div class="dd split" id="export-dd">
+    <button id="download" title="Download SVG">Download SVG</button>
+    <button id="export-btn" class="dd-btn" aria-haspopup="menu" aria-expanded="false" aria-label="More export options" title="More export options">
+      <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6l4.5 4.5L12.5 6"/></svg>
+    </button>
+    <ul class="dd-menu" role="menu" aria-label="Export">
+      <li role="menuitem" data-act="svg">Download SVG</li>
+      <li role="menuitem" data-act="png">Download PNG (2×)</li>
+      <li role="menuitem" data-act="copy-png">Copy as image (PNG)</li>
+      <li role="menuitem" data-act="copy-svg">Copy SVG code</li>
+    </ul>
+  </div>
 </header>
 <main>
   <aside id="files" aria-label="Opened diagram files">
@@ -358,7 +406,10 @@
   </aside>
   <input id="file-input" type="file" accept=".mmd,.mermaid" multiple hidden>
   <input id="dir-input" type="file" webkitdirectory multiple hidden>
-  <textarea id="editor" spellcheck="false"></textarea>
+  <div id="editor-wrap">
+    <pre id="hl" aria-hidden="true"></pre>
+    <textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Diagram source"></textarea>
+  </div>
   <div class="seam-anchor">
     <button id="toggle-editor" class="collapse-handle" aria-pressed="true" title="Show / hide code panel" aria-label="Show / hide code panel">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -842,7 +893,39 @@ function render() {
   } else {
     stage.innerHTML = render_routed(good.src, new Float64Array(good.pos));
   }
+  good.off = isSwimlaneText(good.src) || isAdvance(good.src)
+    ? [0, 0] : svgOffset(stage.querySelector("svg"));
   applyCam();
+}
+
+// The engine shifts the scene when it writes the SVG (bbox
+// normalisation), so layout coords and SVG coords differ by a uniform
+// (dx, dy). Recover it from the drawn node boxes: every <rect> whose
+// size matches a node votes for "rect centre − node centre", and the
+// most common offset wins. Shapes other than rects simply don't vote.
+function svgOffset(svg) {
+  if (!svg || !good) return [0, 0];
+  const rects = [];
+  for (const r of svg.querySelectorAll("rect[x][y][width][height]")) {
+    rects.push([+r.getAttribute("x"), +r.getAttribute("y"), +r.getAttribute("width"), +r.getAttribute("height")]);
+  }
+  const votes = new Map();
+  let best = null, bestN = 0;
+  for (let i = 0; i < good.keys.length; i++) {
+    const w = good.sizes[i * 2], h = good.sizes[i * 2 + 1];
+    const cx = good.pos[i * 2], cy = good.pos[i * 2 + 1];
+    const seen = new Set();
+    for (const [rx, ry, rw, rh] of rects) {
+      if (Math.abs(rw - w) >= 1 || Math.abs(rh - h) >= 1) continue;
+      const key = Math.round(rx + rw / 2 - cx) + "," + Math.round(ry + rh / 2 - cy);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const n = (votes.get(key) ?? 0) + 1;
+      votes.set(key, n);
+      if (n > bestN) { bestN = n; best = key; }
+    }
+  }
+  return best ? best.split(",").map(Number) : [0, 0];
 }
 
 let raf = 0;
@@ -869,8 +952,10 @@ function svgScale() {
 function hitNode(ev) {
   const s = svgScale();
   if (!s || !good) return -1;
-  const x = (ev.clientX - s.r.left) * s.sx;
-  const y = (ev.clientY - s.r.top) * s.sy;
+  const vb = s.svg.viewBox.baseVal;
+  const [ox, oy] = good.off ?? [0, 0];
+  const x = vb.x + (ev.clientX - s.r.left) * s.sx - ox;
+  const y = vb.y + (ev.clientY - s.r.top) * s.sy - oy;
   const abs = isAdvance(good.src) ? advanceAbsPos() : good.pos;
   for (let i = good.keys.length - 1; i >= 0; i--) {
     const cx = abs[i * 2], cy = abs[i * 2 + 1];
@@ -996,9 +1081,66 @@ try {
   }
 } catch {}
 
+// ── Editor syntax highlight ──
+// One left-to-right scan; each token type is a named group. Words are
+// matched whole so arrow heads like "o" never eat an identifier's tail.
+const HL_RE = new RegExp([
+  /(?<cmt>%%[^\n]*)/,
+  /(?<str>"(?:[^"\\\n]|\\.)*")/,
+  /(?<hd>^[ \t]*(?:flowchart|graph|classDiagram|erDiagram|sequenceDiagram|stateDiagram(?:-v2)?|pie|gantt|journey|mindmap|timeline|gitGraph|swimlane)\b)/,
+  /(?<op>[<*o|}{]{0,2}(?:-{2,}|={2,}|-\.+-?|\.{2,}|~{3}|-(?=[>x)]))(?:>>|\|>|>|x(?!\w)|\)|[o|}][|{o]|o(?!\w))?)/,
+  /(?<txt>\|[^|\n]*\||\[[^\[\]\n]*\]|\([^()\n]*\))/,
+  /(?<word>[A-Za-z_]\w*)/,
+  /(?<num>\b\d+(?:\.\d+)?\b)/,
+  /(?<pn>[{}:;,])/,
+].map((r) => r.source).join("|"), "gm");
+const HL_KW = new Set(("subgraph end direction classDef class style linkStyle click call href " +
+  "participant actor note over loop alt else opt par and rect critical break autonumber " +
+  "activate deactivate title accTitle accDescr section state as left right of showData lane " +
+  "true false null").split(" "));
+const HL_DIR = new Set(["TB", "TD", "BT", "RL", "LR"]);
+const esc = (t) => t.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+const span = (cls, t) => `<span class="${cls}">${esc(t)}</span>`;
+
+function highlight(src) {
+  let out = "", last = 0;
+  for (const m of src.matchAll(HL_RE)) {
+    out += esc(src.slice(last, m.index));
+    last = m.index + m[0].length;
+    const g = m.groups;
+    if (g.word) {
+      out += HL_DIR.has(g.word) ? span("dir", g.word) : HL_KW.has(g.word) ? span("kw", g.word) : esc(g.word);
+    } else if (g.txt) {
+      const t = g.txt;
+      out += span("pn", t[0]) + span("txt", t.slice(1, -1)) + span("pn", t.at(-1));
+    } else {
+      const cls = Object.keys(g).find((k) => g[k] !== undefined);
+      out += span(cls, m[0]);
+    }
+  }
+  out += esc(src.slice(last));
+  // A trailing newline needs a glyph after it, or the <pre> is one line
+  // shorter than the textarea and the scroll positions drift apart.
+  return out + (src.endsWith("\n") || src === "" ? " " : "");
+}
+
+const hl = document.getElementById("hl");
+function syncHighlight() {
+  hl.innerHTML = highlight(editor.value);
+  syncHighlightBox();
+}
+function syncHighlightBox() {
+  const bar = editor.offsetWidth - editor.clientWidth;
+  hl.style.paddingRight = `calc(18px + ${bar}px)`;
+  hl.scrollTop = editor.scrollTop;
+}
+editor.addEventListener("scroll", () => { hl.scrollTop = editor.scrollTop; });
+new ResizeObserver(syncHighlightBox).observe(editor);
+
 // ── Wiring ──
 let deb;
 editor.addEventListener("input", () => {
+  syncHighlight();
   const f = files[current];
   if (f) {
     f.text = editor.value;
@@ -1011,6 +1153,8 @@ editor.addEventListener("input", () => {
 // Load a source as a fresh document: new layout, no carried-over drags.
 async function openSource(src) {
   editor.value = src;
+  editor.scrollTop = 0;
+  syncHighlight();
   good = null;
   savedPos.clear();
   // Clear first: if the new source fails to parse, the previous
@@ -1105,10 +1249,119 @@ function downloadBlob(text, type, name) {
 
 const baseName = () => (files[current]?.name ?? "diagram").replace(/\.[^.]+$/, "");
 
-document.getElementById("download").addEventListener("click", () => {
+// ── Export: split button (Download SVG) + menu ──
+const PNG_SCALE = 2;
+const downloadBtn = document.getElementById("download");
+
+function svgText() {
   const svg = stage.querySelector("svg");
-  if (!svg) return;
-  downloadBlob(svg.outerHTML, "image/svg+xml", baseName() + ".svg");
+  if (!svg) throw new Error("nothing rendered yet");
+  const out = svg.cloneNode(true);
+  out.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  return out.outerHTML;
+}
+
+// SVG → <img> → canvas. Size comes from the viewBox (mermaid sets
+// width="100%"); a missing size would make the canvas 0×0.
+function svgToPng(scale = PNG_SCALE) {
+  const svg = stage.querySelector("svg");
+  if (!svg) return Promise.reject(new Error("nothing rendered yet"));
+  // Browsers refuse to export a canvas that drew HTML (mermaid's labels).
+  if (svg.querySelector("foreignObject")) {
+    return Promise.reject(new Error("PNG isn't available for mermaid's HTML labels — switch the engine (E) to flowmaid, or use SVG"));
+  }
+  const vb = svg.viewBox.baseVal;
+  const w = vb?.width || svg.width.baseVal.value, h = vb?.height || svg.height.baseVal.value;
+  const out = svg.cloneNode(true);
+  out.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  out.setAttribute("width", w);
+  out.setAttribute("height", h);
+  out.removeAttribute("style");
+  const url = URL.createObjectURL(new Blob([out.outerHTML], { type: "image/svg+xml" }));
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = Math.ceil(w * scale);
+        c.height = Math.ceil(h * scale);
+        const ctx = c.getContext("2d");
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, w, h);
+        c.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG encoding failed"))), "image/png");
+      } catch (e) {
+        reject(e);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("could not rasterise the SVG")); };
+    img.src = url;
+  });
+}
+
+let flashT = 0;
+function flash(msg) {
+  clearTimeout(flashT);
+  downloadBtn.textContent = msg;
+  flashT = setTimeout(() => { downloadBtn.textContent = "Download SVG"; }, 1400);
+}
+
+async function exportAs(act) {
+  try {
+    if (act === "svg") {
+      downloadBlob(svgText(), "image/svg+xml", baseName() + ".svg");
+    } else if (act === "png") {
+      downloadBlob(await svgToPng(), "image/png", baseName() + ".png");
+    } else if (act === "copy-svg") {
+      await navigator.clipboard.writeText(svgText());
+      flash("Copied ✓");
+    } else if (act === "copy-png") {
+      if (!window.ClipboardItem || !navigator.clipboard?.write) throw new Error("this browser can't copy images");
+      // Hand the clipboard a promise so Safari still counts the click
+      // as the user gesture while the PNG is being drawn.
+      const png = svgToPng();
+      png.catch(() => {}); // the clipboard rejection below reports it
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+      flash("Copied ✓");
+    }
+  } catch (e) {
+    errBox.textContent = "export: " + String(e.message ?? e);
+    errBox.style.display = "block";
+  }
+}
+
+downloadBtn.addEventListener("click", () => exportAs("svg"));
+
+const xdd = document.getElementById("export-dd");
+const xddBtn = document.getElementById("export-btn");
+const xddItems = [...xdd.querySelectorAll(".dd-menu li")];
+let xddActive = -1;
+const xddMenu = xdd.querySelector(".dd-menu");
+function setExportMenu(open) {
+  if (open) {
+    xddMenu.classList.remove("flip");
+    if (xddMenu.getBoundingClientRect().left < 0) xddMenu.classList.add("flip");
+  }
+  xdd.classList.toggle("open", open);
+  xddBtn.setAttribute("aria-expanded", String(open));
+  if (!open) { xddActive = -1; xddItems.forEach((it) => it.removeAttribute("aria-current")); }
+}
+xddBtn.addEventListener("click", () => setExportMenu(!xdd.classList.contains("open")));
+document.addEventListener("click", (e) => { if (!xdd.contains(e.target)) setExportMenu(false); });
+for (const li of xddItems) {
+  li.addEventListener("click", () => { setExportMenu(false); exportAs(li.dataset.act); });
+}
+xddBtn.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && xdd.classList.contains("open")) { setExportMenu(false); return; }
+  if (!["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) return;
+  e.preventDefault();
+  if (!xdd.classList.contains("open")) { setExportMenu(true); return; }
+  if ((e.key === "Enter" || e.key === " ") && xddActive >= 0) { xddItems[xddActive].click(); return; }
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    xddActive = Math.min(xddItems.length - 1, Math.max(0, xddActive + (e.key === "ArrowDown" ? 1 : -1)));
+    xddItems.forEach((it, i) => it.setAttribute("aria-current", String(i === xddActive)));
+  }
 });
 
 // ── Engine switch ──
