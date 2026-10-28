@@ -893,8 +893,9 @@ function render() {
   } else {
     stage.innerHTML = render_routed(good.src, new Float64Array(good.pos));
   }
-  good.off = isSwimlaneText(good.src) || isAdvance(good.src)
-    ? [0, 0] : svgOffset(stage.querySelector("svg"));
+  good.off = isSwimlaneText(good.src) || (isAdvance(good.src) && good.advance?.direction === "horizontal")
+    ? [0, 0]
+    : svgOffset(stage.querySelector("svg"), isAdvance(good.src) ? advanceAbsPos() : good.pos);
   applyCam();
 }
 
@@ -903,7 +904,7 @@ function render() {
 // (dx, dy). Recover it from the drawn node boxes: every <rect> whose
 // size matches a node votes for "rect centre − node centre", and the
 // most common offset wins. Shapes other than rects simply don't vote.
-function svgOffset(svg) {
+function svgOffset(svg, pos) {
   if (!svg || !good) return [0, 0];
   const rects = [];
   for (const r of svg.querySelectorAll("rect[x][y][width][height]")) {
@@ -913,7 +914,7 @@ function svgOffset(svg) {
   let best = null, bestN = 0;
   for (let i = 0; i < good.keys.length; i++) {
     const w = good.sizes[i * 2], h = good.sizes[i * 2 + 1];
-    const cx = good.pos[i * 2], cy = good.pos[i * 2 + 1];
+    const cx = pos[i * 2], cy = pos[i * 2 + 1];
     const seen = new Set();
     for (const [rx, ry, rw, rh] of rects) {
       if (Math.abs(rw - w) >= 1 || Math.abs(rh - h) >= 1) continue;
@@ -1129,9 +1130,14 @@ function syncHighlight() {
   hl.innerHTML = highlight(editor.value);
   syncHighlightBox();
 }
+// Fast typing re-highlights at most once per frame.
+let hlRaf = 0;
+function scheduleHighlight() {
+  if (!hlRaf) hlRaf = requestAnimationFrame(() => { hlRaf = 0; syncHighlight(); });
+}
 function syncHighlightBox() {
   const bar = editor.offsetWidth - editor.clientWidth;
-  hl.style.paddingRight = `calc(18px + ${bar}px)`;
+  hl.style.paddingRight = `calc(${getComputedStyle(editor).paddingRight} + ${bar}px)`;
   hl.scrollTop = editor.scrollTop;
 }
 editor.addEventListener("scroll", () => { hl.scrollTop = editor.scrollTop; });
@@ -1140,7 +1146,7 @@ new ResizeObserver(syncHighlightBox).observe(editor);
 // ── Wiring ──
 let deb;
 editor.addEventListener("input", () => {
-  syncHighlight();
+  scheduleHighlight();
   const f = files[current];
   if (f) {
     f.text = editor.value;
@@ -1251,14 +1257,29 @@ const baseName = () => (files[current]?.name ?? "diagram").replace(/\.[^.]+$/, "
 
 // ── Export: split button (Download SVG) + menu ──
 const PNG_SCALE = 2;
+// Largest canvas every major browser will encode (Safari: 16.7 MP,
+// 16384 px a side); bigger diagrams export at a reduced scale.
+const PNG_MAX_PIXELS = 16_777_216, PNG_MAX_SIDE = 16_384;
+const FLASH_MS = 1400;
+const PNG_HTML_LABELS = "PNG isn't available for mermaid's HTML labels — switch the engine (E) to flowmaid, or use SVG";
 const downloadBtn = document.getElementById("download");
+const downloadLabel = downloadBtn.textContent;
+
+// XMLSerializer, not outerHTML: HTML serialisation writes entities like
+// &nbsp; and void tags like <br> that make the .svg invalid XML.
+const serialize = (el) => new XMLSerializer().serializeToString(el);
 
 function svgText() {
   const svg = stage.querySelector("svg");
   if (!svg) throw new Error("nothing rendered yet");
   const out = svg.cloneNode(true);
   out.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  return out.outerHTML;
+  return serialize(out);
+}
+
+function clipboard() {
+  if (!navigator.clipboard) throw new Error("copying needs HTTPS (or localhost)");
+  return navigator.clipboard;
 }
 
 // SVG → <img> → canvas. Size comes from the viewBox (mermaid sets
@@ -1267,24 +1288,23 @@ function svgToPng(scale = PNG_SCALE) {
   const svg = stage.querySelector("svg");
   if (!svg) return Promise.reject(new Error("nothing rendered yet"));
   // Browsers refuse to export a canvas that drew HTML (mermaid's labels).
-  if (svg.querySelector("foreignObject")) {
-    return Promise.reject(new Error("PNG isn't available for mermaid's HTML labels — switch the engine (E) to flowmaid, or use SVG"));
-  }
+  if (svg.querySelector("foreignObject")) return Promise.reject(new Error(PNG_HTML_LABELS));
   const vb = svg.viewBox.baseVal;
   const w = vb?.width || svg.width.baseVal.value, h = vb?.height || svg.height.baseVal.value;
+  scale = Math.min(scale, Math.sqrt(PNG_MAX_PIXELS / (w * h)), PNG_MAX_SIDE / w, PNG_MAX_SIDE / h);
   const out = svg.cloneNode(true);
   out.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   out.setAttribute("width", w);
   out.setAttribute("height", h);
   out.removeAttribute("style");
-  const url = URL.createObjectURL(new Blob([out.outerHTML], { type: "image/svg+xml" }));
+  const url = URL.createObjectURL(new Blob([serialize(out)], { type: "image/svg+xml" }));
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
       try {
         const c = document.createElement("canvas");
-        c.width = Math.ceil(w * scale);
-        c.height = Math.ceil(h * scale);
+        c.width = Math.floor(w * scale);
+        c.height = Math.floor(h * scale);
         const ctx = c.getContext("2d");
         ctx.scale(scale, scale);
         ctx.drawImage(img, 0, 0, w, h);
@@ -1304,7 +1324,7 @@ let flashT = 0;
 function flash(msg) {
   clearTimeout(flashT);
   downloadBtn.textContent = msg;
-  flashT = setTimeout(() => { downloadBtn.textContent = "Download SVG"; }, 1400);
+  flashT = setTimeout(() => { downloadBtn.textContent = downloadLabel; }, FLASH_MS);
 }
 
 async function exportAs(act) {
@@ -1314,15 +1334,18 @@ async function exportAs(act) {
     } else if (act === "png") {
       downloadBlob(await svgToPng(), "image/png", baseName() + ".png");
     } else if (act === "copy-svg") {
-      await navigator.clipboard.writeText(svgText());
+      await clipboard().writeText(svgText());
       flash("Copied ✓");
     } else if (act === "copy-png") {
-      if (!window.ClipboardItem || !navigator.clipboard?.write) throw new Error("this browser can't copy images");
+      if (!window.ClipboardItem || !clipboard().write) throw new Error("this browser can't copy images");
+      // Checked up front: once inside clipboard.write, the reason is lost
+      // behind a generic DOMException.
+      if (stage.querySelector("svg foreignObject")) throw new Error(PNG_HTML_LABELS);
       // Hand the clipboard a promise so Safari still counts the click
       // as the user gesture while the PNG is being drawn.
       const png = svgToPng();
-      png.catch(() => {}); // the clipboard rejection below reports it
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": png })]);
+      png.catch(() => {}); // surfaced by the clipboard.write rejection
+      await clipboard().write([new ClipboardItem({ "image/png": png })]);
       flash("Copied ✓");
     }
   } catch (e) {
@@ -1348,20 +1371,25 @@ function setExportMenu(open) {
   if (!open) { xddActive = -1; xddItems.forEach((it) => it.removeAttribute("aria-current")); }
 }
 xddBtn.addEventListener("click", () => setExportMenu(!xdd.classList.contains("open")));
-document.addEventListener("click", (e) => { if (!xdd.contains(e.target)) setExportMenu(false); });
+// Any click closes the menu except the chevron, which toggles it.
+document.addEventListener("click", (e) => { if (!xddBtn.contains(e.target)) setExportMenu(false); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && xdd.classList.contains("open")) { setExportMenu(false); xddBtn.focus(); }
+});
+function setExportActive(i) {
+  xddActive = i;
+  xddItems.forEach((it, j) => it.setAttribute("aria-current", String(j === i)));
+}
 for (const li of xddItems) {
   li.addEventListener("click", () => { setExportMenu(false); exportAs(li.dataset.act); });
 }
 xddBtn.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && xdd.classList.contains("open")) { setExportMenu(false); return; }
   if (!["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) return;
   e.preventDefault();
-  if (!xdd.classList.contains("open")) { setExportMenu(true); return; }
+  if (!xdd.classList.contains("open")) { setExportMenu(true); setExportActive(0); return; }
   if ((e.key === "Enter" || e.key === " ") && xddActive >= 0) { xddItems[xddActive].click(); return; }
-  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-    xddActive = Math.min(xddItems.length - 1, Math.max(0, xddActive + (e.key === "ArrowDown" ? 1 : -1)));
-    xddItems.forEach((it, i) => it.setAttribute("aria-current", String(i === xddActive)));
-  }
+  if (xddActive < 0) { setExportActive(0); return; }
+  setExportActive(Math.min(xddItems.length - 1, Math.max(0, xddActive + (e.key === "ArrowDown" ? 1 : -1))));
 });
 
 // ── Engine switch ──
