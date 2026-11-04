@@ -263,12 +263,21 @@ pub fn node_keys(source: &str) -> Result<String, JsError> {
             .map(|e| e.name.as_str())
             .collect::<Vec<_>>()
             .join("\n"),
-        Document::Class(d) => d
-            .classes
-            .iter()
-            .map(|c| c.name.as_str())
-            .collect::<Vec<_>>()
-            .join("\n"),
+        // Notes follow the classes, in scene order, keyed by their
+        // scene ids ("note-<k>") so a dragged note keeps its place too.
+        Document::Class(d) => {
+            let sc = flowmaid::class::scene(&d);
+            d.classes
+                .iter()
+                .map(|c| c.name.clone())
+                .chain(
+                    sc.scene.nodes[d.classes.len()..]
+                        .iter()
+                        .map(|n| n.id.clone()),
+                )
+                .collect::<Vec<_>>()
+                .join("\n")
+        }
         // Static diagrams have no draggable nodes.
         Document::Sequence(_)
         | Document::Pie(_)
@@ -363,7 +372,7 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
     let n = match &doc {
         Document::Flowchart(g) | Document::State(g) => g.nodes.len(),
         Document::Er(d) => d.entities.len(),
-        Document::Class(d) => d.classes.len(),
+        Document::Class(d) => d.classes.len() + d.notes.len(),
         // Static diagrams: no positions expected, rendered as-is.
         Document::Sequence(_)
         | Document::Pie(_)
@@ -374,7 +383,10 @@ fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
         | Document::Timeline(_)
         | Document::Sankey(_) => 0,
     };
-    if positions.len() != n * 2 {
+    // class::route also takes class centres alone (each note then sits
+    // beside its class), as hosts built before notes existed pass.
+    let class_only = matches!(&doc, Document::Class(d) if positions.len() == d.classes.len() * 2);
+    if positions.len() != n * 2 && !class_only {
         // A tailored message for static diagrams — "expected 0
         // coordinates for 0 nodes" read like the document was empty
         // (bug hunt).
@@ -476,6 +488,31 @@ mod tests {
         assert!(super::routed_impl(src, &[0.0, 0.0, 100.0, 100.0, 200.0, 0.0]).is_ok());
         assert!(super::routed_impl(src, &[0.0, 0.0]).is_err(), "wrong length");
         assert!(super::routed_impl(src, &[f64::NAN; 6]).is_err(), "non-finite");
+    }
+
+    #[test]
+    fn routed_class_notes_take_their_own_centres() {
+        // Engine 0.34 draws notes as scene nodes after the classes:
+        // auto_positions returns classes + notes, and both that and the
+        // classes alone must render.
+        let src = "classDiagram\nnote \"shop\"\nAnimal <|-- Dog\nnote for Dog \"barks\"";
+        let d = match flowmaid::parser::parse_document(src).unwrap() {
+            flowmaid::Document::Class(d) => d,
+            _ => unreachable!(),
+        };
+        let auto: Vec<f64> = flowmaid::class::scene(&d)
+            .scene
+            .nodes
+            .iter()
+            .flat_map(|n| [n.x, n.y])
+            .collect();
+        assert_eq!(auto.len(), 2 * (2 + 2));
+        assert!(super::routed_impl(src, &auto).is_ok(), "classes + notes");
+        assert!(super::routed_impl(src, &auto[..4]).is_ok(), "classes only");
+        assert!(
+            super::routed_impl(src, &auto[..6]).is_err(),
+            "partial notes"
+        );
     }
 
     #[test]
