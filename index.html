@@ -651,7 +651,7 @@ function fitView(zCap = 1.5, readable = false) {
 // ── Render engine: flowmaid (wasm, bundled) or mermaid.js ──
 // Mermaid is ~2.5 MB, so it is fetched from the CDN only when the
 // user picks it — the default playground stays zero-dep.
-const MERMAID_VERSION = "11.4.1";
+const MERMAID_VERSION = "12.2.0";
 const MERMAID_URL = `https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.esm.min.mjs`;
 const ENGINES = ["flowmaid", "mermaid"];
 let engine = "flowmaid";
