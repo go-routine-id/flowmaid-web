@@ -14,9 +14,11 @@
 const ID_RE = /[\p{L}\p{N}_]+/uy;
 const CLASS_RE = /:::[\w-]+/y;
 const AMP_RE = /\s*&\s*/y;
+// `label: "…"` inside an `@{ … }` shape block.
+const AT_LABEL_RE = /label\s*:\s*("(?:[^"\\]|\\.)*"|[^,}]+)/;
 const WS_RE = /[ \t]*/y;
 // `A -- text --> B`, `A == text ==> B`, `A -. text .-> B`
-const EDGE_TEXT_RE = /[<xo]?(?:--|==|-\.)(?![->=.])[ \t]*[^\n]*?[ \t]*(?:-{2,}[>xo]?|={2,}[>xo]?|\.-+[>xo]?)(?=[ \t]|[\p{L}\p{N}_"])/uy;
+const EDGE_TEXT_RE = /[<xo]?(?:--|==|-\.)(?![->=.]|[xo](?![\p{L}\p{N}_]))[ \t]*[^\n]*?[ \t]*(?:-{2,}[>xo]?|={2,}[>xo]?|\.-+[>xo]?)(?=[ \t]|[\p{L}\p{N}_"])/uy;
 // `-->`, `---`, `==>`, `-.->`, `~~~`, `<-->`, `--o`, `x--x`, optional `|label|`
 const EDGE_PLAIN_RE = /[<xo]?(?:-{2,}|={2,}|-\.+-|~{3,})(?:>|[xo](?![\p{L}\p{N}_]))?(?:[ \t]*\|[^|\n]*\|)?/uy;
 
@@ -162,14 +164,18 @@ export function parseFlow(src) {
     if (front) { if (t === "---") front = false; continue; }
     if (t === "" || t.startsWith("%%")) continue;
     const head = t.match(/^[\w-]+/)?.[0];
+    let segs = splitSegments(src, start, end);
     if (!sawHeader) {
-      if (head === "flowchart" || head === "graph") { sawHeader = true; continue; }
-    }
+      if (head !== "flowchart" && head !== "graph") continue;
+      // `graph LR; A --> B`: statements may follow the header.
+      sawHeader = true;
+      segs = segs.slice(1);
+    } else
     if (head && OPAQUE_HEADS.has(head) && !/^[\w-]+\s*(?:&|-|=|~|<|[xo]-)/.test(t)) {
       line.head = head;
       continue;
     }
-    for (const [a, b] of splitSegments(src, start, end)) {
+    for (const [a, b] of segs) {
       if (src.slice(a, b).trim() === "") continue;
       const stmt = parseStatement(src, a, b);
       if (stmt) line.segs.push({ start: a, end: b, stmt });
@@ -223,7 +229,7 @@ export function nodeLabel(src, id) {
     if (r.id !== id || !r.shape) continue;
     const inner = src.slice(r.shape.innerStart, r.shape.innerEnd);
     if (r.shape.kind === "at") {
-      const m = inner.match(/label\s*:\s*("(?:[^"\\]|\\.)*"|[^,}]+)/);
+      const m = inner.match(AT_LABEL_RE);
       if (m) return unquote(m[1]);
       continue;
     }
@@ -257,7 +263,7 @@ export function renameNode(src, id, label) {
     if (r.shape.kind === "at") {
       const inner = src.slice(r.shape.innerStart, r.shape.innerEnd);
       const q = '"' + label.trim().replace(/"/g, "#quot;") + '"';
-      const m = inner.match(/label\s*:\s*("(?:[^"\\]|\\.)*"|[^,}]+)/);
+      const m = inner.match(AT_LABEL_RE);
       const next = m
         ? inner.slice(0, m.index) + "label: " + q + inner.slice(m.index + m[0].length)
         : inner.trimEnd() + ", label: " + q + " ";
@@ -374,6 +380,18 @@ function finishPieces(doc, seg, pieces) {
   return kept;
 }
 
+// `linkStyle` addresses edges by their index in source order; after
+// edges are removed, drop the ones that went and shift the rest down.
+function renumberLinkStyles(src, removed /* sorted edge indices */) {
+  if (!removed.length) return src;
+  const gone = new Set(removed);
+  return src.replace(/^([ \t]*linkStyle[ \t]+)([\d,]+)([^\n]*)(\n|$)/gm, (all, pre, list, rest, nl) => {
+    const ids = list.split(",").filter(Boolean).map(Number).filter((n) => !gone.has(n))
+      .map((n) => n - removed.filter((r) => r < n).length);
+    return ids.length ? pre + ids.join(",") + rest + nl : "";
+  }).replace(/\n$/, src.endsWith("\n") ? "\n" : "");
+}
+
 /** Delete a node, every edge touching it, and its style/class/click lines. */
 export function deleteNode(src, id) {
   const doc = parseFlow(src);
@@ -392,10 +410,12 @@ export function deleteNode(src, id) {
     if (cur) pieces.push(cur);
     changes.set(seg, finishPieces(doc, seg, pieces));
   }
-  let out = rewrite(doc, changes);
+  const removed = [];
+  edgeList(src).forEach(([a, b], i) => { if (a === id || b === id) removed.push(i); });
+  let out = renumberLinkStyles(rewrite(doc, changes), removed);
   // Scrub style / class / click lines that name the node.
   const esc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  out = out.replace(new RegExp(`^[ \\t]*(?:style|click)[ \\t]+${esc}\\b[^\\n]*(?:\\n|$)`, "gmu"), "");
+  out = out.replace(new RegExp(`^[ \\t]*(?:style|click)[ \\t]+${esc}(?![\\p{L}\\p{N}_])[^\\n]*(?:\\n|$)`, "gmu"), "");
   out = out.replace(/^([ \t]*class[ \t]+)([^\s]+)([ \t]+[^\n]*)$/gmu, (all, pre, list, rest) => {
     const ids = list.split(",").filter((x) => x !== id);
     if (ids.length === list.split(",").length) return all;
@@ -407,11 +427,12 @@ export function deleteNode(src, id) {
 /** Delete the `nth` (0-based) edge from → to, in source order. */
 export function deleteEdge(src, from, to, nth = 0) {
   const doc = parseFlow(src);
-  let count = 0;
+  let count = 0, index = -1;
   for (const line of doc.lines) for (const seg of line.segs) {
     const { groups, ops } = seg.stmt;
     for (let k = 0; k < ops.length; k++) {
       for (const a of groups[k].refs) for (const b of groups[k + 1].refs) {
+        index++;
         if (a.id !== from || b.id !== to) continue;
         if (count++ !== nth) continue;
         const gs = groups.map((g) => g.refs);
@@ -423,7 +444,7 @@ export function deleteEdge(src, from, to, nth = 0) {
           extras.push({ groups: [[x], [y]], ops: [ops[k]], text: `${x.id} ${ops[k].raw.trim()} ${y.id}` });
         }
         const pieces = finishPieces(doc, seg, [left, ...extras, right]);
-        return rewrite(doc, new Map([[seg, pieces]]));
+        return renumberLinkStyles(rewrite(doc, new Map([[seg, pieces]])), [index]);
       }
     }
   }

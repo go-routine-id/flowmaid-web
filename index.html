@@ -1064,6 +1064,8 @@ view.addEventListener("pointerdown", (ev) => {
   }
   const i = hitNode(ev);
   if (editActive()) {
+    // Keep keys (Delete, Enter) on the canvas, not in the code panel.
+    if (document.activeElement !== renameInput) view.focus({ preventScroll: true });
     if (i >= 0 && ev.shiftKey) { startLink(good.keys[i], ev); return; }
     const edgeEl = i < 0 && ev.target.closest?.("[data-edge-from]");
     if (edgeEl) {
@@ -1154,7 +1156,10 @@ const renameInput = document.getElementById("rename");
 const HINT = "Double-click canvas: new node · double-click node: rename · drag ● (or Shift+drag): connect · Delete: remove";
 
 function canEdit() {
-  return engine === "flowmaid" && !!good && fe.isFlowchart(good.src) && !isAdvance(good.src);
+  if (engine !== "flowmaid" || !good) return false;
+  // Called on every pan / zoom frame: classify each document once.
+  good.flow ??= fe.isFlowchart(good.src) && !isAdvance(good.src);
+  return good.flow;
 }
 function editActive() { return editMode && canEdit(); }
 
@@ -1246,9 +1251,24 @@ function updateOverlay() {
 // Rewrite the editor through the browser's edit stack so Ctrl/⌘+Z in
 // the code panel undoes canvas edits too; only the changed span is
 // replaced, which keeps the caret and scroll where they were.
-function applySource(next) {
+// `edit(src)` returns the new source; it runs only once the editor text
+// and the diagram on screen agree (an open rename is committed first,
+// a pending re-render is flushed), so ids and edge counts the canvas
+// handed out still mean the same thing in the text. Returns success.
+function applySource(edit) {
+  if (renaming) commitRename();
+  if (!good || editor.value !== good.src) {
+    clearTimeout(deb);
+    rebuild(editor.value);
+  }
+  if (!good || editor.value !== good.src) {
+    errBox.textContent = "Fix the error in the code before editing on the canvas.";
+    errBox.style.display = "block";
+    return false;
+  }
   const old = editor.value;
-  if (next === old) return;
+  const next = edit(old);
+  if (next === old) return false;
   let a = 0;
   while (a < old.length && a < next.length && old[a] === next[a]) a++;
   let b = 0;
@@ -1267,9 +1287,11 @@ function applySource(next) {
   clearTimeout(deb);
   rebuild(editor.value);
   view.focus({ preventScroll: true });
+  return true;
 }
 
-function addNodeAt(clientX, clientY) {
+// Add a node (optionally wired from `from`) at a client point.
+function addNodeAt(clientX, clientY, from = null) {
   if (!editActive()) return;
   if (clientX === undefined) {
     const vr = view.getBoundingClientRect();
@@ -1279,21 +1301,26 @@ function addNodeAt(clientX, clientY) {
     clientY = vr.top + vr.height / 2 + k;
   }
   const p = clientToLayout(clientX, clientY);
-  const id = fe.freshId(editor.value, good.keys);
-  if (p) savedPos.set(id, p);
-  applySource(fe.addNode(editor.value, id, "New node"));
+  let id;
+  const ok = applySource((src) => {
+    id = fe.freshId(src, good.keys);
+    if (p) savedPos.set(id, p);
+    const next = fe.addNode(src, id, "New node");
+    return from ? fe.addEdge(next, from, id) : next;
+  });
+  if (!ok) return;
   select({ type: "node", id });
-  startRename(id, true);
+  startRename(id);
 }
 
 function deleteSelection() {
   if (!editActive() || !sel) return;
-  if (sel.type === "node") {
-    savedPos.delete(sel.id);
-    applySource(fe.deleteNode(editor.value, sel.id));
-  } else {
-    applySource(fe.deleteEdge(editor.value, sel.from, sel.to, sel.nth));
-  }
+  const s = sel;
+  const ok = applySource((src) => s.type === "node"
+    ? fe.deleteNode(src, s.id)
+    : fe.deleteEdge(src, s.from, s.to, s.nth));
+  if (!ok) return;
+  if (s.type === "node") savedPos.delete(s.id);
   select(null);
 }
 
@@ -1301,7 +1328,7 @@ function deleteSelection() {
 function startLink(from, ev) {
   const r = nodeRect(from);
   if (!r) return;
-  link = { from, x: r.cx, y: r.cy };
+  link = { from, x: r.cx, y: r.cy, sx: ev.clientX, sy: ev.clientY };
   drag = null; pan = null;
   view.setPointerCapture(ev.pointerId);
   view.style.cursor = "crosshair";
@@ -1321,29 +1348,21 @@ function moveLink(ev) {
 }
 
 function endLink(ev, commit) {
-  const from = link.from;
+  const { from, sx, sy } = link;
   link = null;
   linkPreview.style.display = "none";
   if (!commit) return;
-  const r = nodeRect(from);
-  const vr = view.getBoundingClientRect();
-  // A click on the handle without a real drag does nothing.
-  if (r && Math.hypot(ev.clientX - vr.left - r.cx, ev.clientY - vr.top - r.cy) < 8) return;
+  // A click (no real drag) on the handle or a Shift-clicked node does nothing.
+  if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
   const i = hitNode(ev);
   if (i >= 0) {
     const to = good.keys[i];
     if (to === from) return;
-    applySource(fe.addEdge(editor.value, from, to));
-    select({ type: "node", id: to });
+    if (applySource((src) => fe.addEdge(src, from, to))) select({ type: "node", id: to });
     return;
   }
   // Dropped on empty canvas: new node there, already connected.
-  const p = clientToLayout(ev.clientX, ev.clientY);
-  const id = fe.freshId(editor.value, good.keys);
-  if (p) savedPos.set(id, p);
-  applySource(fe.addEdge(fe.addNode(editor.value, id, "New node"), from, id));
-  select({ type: "node", id });
-  startRename(id, true);
+  addNodeAt(ev.clientX, ev.clientY, from);
 }
 
 linkHandle.addEventListener("pointerdown", (ev) => {
@@ -1353,10 +1372,10 @@ linkHandle.addEventListener("pointerdown", (ev) => {
 });
 
 // ── Inline rename ──
-var renaming = null; // { id, fresh }
-function startRename(id, fresh = false) {
+var renaming = null; // { id }
+function startRename(id) {
   if (!editActive()) return;
-  renaming = { id, fresh };
+  renaming = { id };
   renameInput.value = fe.nodeLabel(editor.value, id);
   renameInput.hidden = false;
   placeRename();
@@ -1374,7 +1393,7 @@ function commitRename() {
   const { id } = renaming;
   const label = renameInput.value.trim();
   cancelRename();
-  if (label && label !== fe.nodeLabel(editor.value, id)) applySource(fe.renameNode(editor.value, id, label));
+  if (label) applySource((src) => label === fe.nodeLabel(src, id) ? src : fe.renameNode(src, id, label));
 }
 function cancelRename() {
   renaming = null;
@@ -1403,7 +1422,7 @@ document.addEventListener("keydown", (e) => {
   if (e.target.closest?.("textarea, input, .dd")) return;
   if ((e.key === "Delete" || e.key === "Backspace") && sel) { e.preventDefault(); deleteSelection(); }
   else if (e.key === "Escape" && sel) select(null);
-  else if ((e.key === "Enter" || e.key === "F2") && sel?.type === "node") { e.preventDefault(); startRename(sel.id); }
+  else if ((e.key === "Enter" || e.key === "F2") && sel?.type === "node" && !e.target.closest?.("button")) { e.preventDefault(); startRename(sel.id); }
 });
 
 try { editMode = localStorage.getItem("edit") === "on"; } catch {}
@@ -1421,7 +1440,13 @@ document.getElementById("zoom-out").addEventListener("click", () => {
 document.getElementById("zoom-fit").addEventListener("click", () => fitView());
 document.getElementById("zoom-pct").addEventListener("click", () => fitView(1));
 view.addEventListener("dblclick", (e) => {
-  if (e.target.closest?.("#edit-bar, #rename, #zoombar")) return;
+  if (e.target.closest?.("#edit-bar, #rename, #zoombar, #link-handle")) return;
+  // Pointer capture during a link gesture retargets the click to #view,
+  // so test the handle by position too.
+  if (linkHandle.style.display === "block") {
+    const h = linkHandle.getBoundingClientRect();
+    if (Math.abs(e.clientX - (h.left + h.width / 2)) <= 20 && Math.abs(e.clientY - (h.top + h.height / 2)) <= 20) return;
+  }
   const i = hitNode(e);
   if (editActive()) {
     if (i >= 0) startRename(good.keys[i]);

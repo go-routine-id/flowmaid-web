@@ -28,7 +28,7 @@ Q@{ shape: circle, label: "Qq" }
 style A fill:#fff
 class A,B store
 classDef store fill:#eee`;
-for (const s of [A, B]) assert.deepEqual(fe.edgeList(s).filter(([a,b])=>true), titles(s), "edge order");
+for (const s of [A, B]) assert.deepEqual(fe.edgeList(s), titles(s), "edge order");
 assert.equal(fe.isFlowchart(A), true); assert.equal(fe.isFlowchart("%% x\nerDiagram"), false);
 assert.equal(fe.nodeLabel(A,"C"), "Valid?"); assert.equal(fe.nodeLabel(B,"X"), "a (b)"); assert.equal(fe.nodeLabel(B,"Q"), "Qq"); assert.equal(fe.nodeLabel(B,"E"), "E");
 let s;
@@ -56,4 +56,20 @@ for (const src of [A,B]) {
     assert.ok(!titles(out).some(([a,b])=>a===id||b===id));
   }
 }
+// Statements on the header line.
+const H = "graph LR; A-->B; B-->C";
+assert.deepEqual(fe.edgeList(H), titles(H));
+assert.equal(ok(fe.deleteEdge(H, "A", "B")).includes("A-->B"), false);
+assert.ok(!m.node_keys(ok(fe.deleteNode(H, "A"))).split("\n").includes("A"));
+// `--o` / `--x` arrows are edges, not the start of `-- text -->`.
+const O = "graph LR\nA --o B --> C";
+assert.deepEqual(fe.edgeList(O), [["A", "B"], ["B", "C"]]);
+assert.deepEqual(fe.edgeList(O), titles(O));
+// linkStyle indices follow removed edges.
+const L = "graph LR\nA-->B\nB-->C\nC-->D\nlinkStyle 0,2 stroke:red\nlinkStyle 1 stroke:blue";
+assert.equal(ok(fe.deleteEdge(L, "A", "B")), "graph LR\nA\nB-->C\nC-->D\nlinkStyle 1 stroke:red\nlinkStyle 0 stroke:blue");
+assert.equal(ok(fe.deleteNode(L, "B")), "graph LR\nA\nC-->D\nlinkStyle 0 stroke:red");
+// Non-ASCII ids get their style lines scrubbed too.
+const U = "graph LR\nÄ[x] --> B\nstyle Ä fill:#f00\nstyle B fill:#0f0";
+assert.equal(ok(fe.deleteNode(U, "Ä")), "graph LR\nB\nstyle B fill:#0f0");
 console.log("ALL OK");
