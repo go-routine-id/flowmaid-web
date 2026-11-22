@@ -416,13 +416,35 @@ export function nodeKind(kind, key) {
 }
 
 /**
- * True for a node key the grammar would take back as an identifier. The
- * engine also reports keys for things the source never named — a state
- * diagram's `__start_root`, a class note's `note-0` — and writing one of
+ * True for a node key a statement can carry bare. Digits may lead one:
+ * `1[Start] --> 2[End]` is a flowchart the engine accepts, and it hands
+ * `1` and `2` back as keys. What must stay out are the keys the engine
+ * reports for things the source never named — a state diagram's
+ * `__start_root`, a class note's `note-0` — because writing one of
  * those into a statement would invent a node beside the drawn one.
  */
 export function isWritableKey(key) {
-  return /^[\p{L}_][\p{L}\p{N}_]*$/u.test(key) && !key.startsWith("__");
+  return /^[\p{L}\p{N}_]+$/u.test(key) && !key.startsWith("__");
+}
+
+/**
+ * The key as a statement of a `kind` document would spell it, or null
+ * when that grammar has no way to name it at all. Only ER takes a
+ * quoted id back (`"ORDER ITEM" ||--o{ X` parses); a flowchart rejects
+ * one outright, and `class "My Class"` makes a key that carries its own
+ * quotes, so there the quoted form is no way out either.
+ */
+export function idText(kind, key) {
+  if (isWritableKey(key)) return key;
+  // A key the source never named has no spelling at all: quoting it
+  // would write `"__start_root"` and invent a node beside the drawn one.
+  if (key.startsWith("__")) return null;
+  return kind === "er" && /^[^"\\\n]+$/.test(key) ? `"${key}"` : null;
+}
+
+/** True when a statement in a `kind` document can name this key. */
+export function canWriteKey(kind, key) {
+  return idText(kind, key) !== null;
 }
 
 /** A fresh id for a new node, prefixed to suit what it is. */
@@ -477,7 +499,11 @@ export function addNode(src, id, label, key = "rect") {
 /** Wire `from` to `to`. Without `op`, the document's own default. */
 export function addEdge(src, from, to, op = null) {
   const kind = docKind(src);
-  const lines = [`${from} ${op ?? EDGE_OP[kind] ?? "-->"} ${to}`];
+  // An ER entity may be named `"ORDER ITEM"`: spell each end the way its
+  // own grammar takes it back. A key with no spelling at all is left as
+  // it came and the rebuild refuses the edit, rather than guessing here.
+  const a = idText(kind, from) ?? from, b = idText(kind, to) ?? to;
+  const lines = [`${a} ${op ?? EDGE_OP[kind] ?? "-->"} ${b}`];
   return kind === "flowchart" ? appendLines(src, parseFlow(src), lines) : appendPlain(src, lines);
 }
 

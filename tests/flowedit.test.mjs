@@ -245,10 +245,33 @@ assert.match(ok(fe.addNode("flowchart TD\n    A[a]", "X", "c\\d", "lean-l")), /X
     assert.equal(fe.isWritableKey(k), !k.startsWith("__"), `writable? ${k}`);
   }
   assert.equal(fe.isWritableKey("note-0"), false);
-  assert.equal(fe.isWritableKey("1abc"), false);
   assert.equal(fe.isWritableKey(""), false);
   assert.equal(fe.isWritableKey("Base"), true);
   assert.equal(fe.isWritableKey("_x2"), true);
+
+  // A flowchart may name its nodes with digits and the engine hands
+  // those keys back: rejecting them killed link and add on diagrams
+  // that had worked all along.
+  const num = "flowchart TD\n    1[Start] --> 2[End]\n    2 --> 3B[Done]";
+  for (const k of m.node_keys(num).split("\n").filter(Boolean)) {
+    assert.equal(fe.isWritableKey(k), true, `a digit-led key is writable: ${k}`);
+    assert.equal(fe.canWriteKey("flowchart", k), true, `and nameable: ${k}`);
+  }
+  must(fe.addEdge(num, "2", "3B"), "an edge between digit-led keys");
+  assert.match(fe.addEdge(num, "2", "1"), /\n    2 --> 1$/);
+
+  // An ER entity may be named with spaces. Only ER takes the quoted id
+  // back, so only there does such a key become writable at all.
+  const sp = 'erDiagram\n  "ORDER ITEM" ||--o{ LINE : has';
+  assert.ok(m.node_keys(sp).split("\n").includes("ORDER ITEM"), "the spaced key is real");
+  assert.equal(fe.isWritableKey("ORDER ITEM"), false, "not bare");
+  assert.equal(fe.idText("er", "ORDER ITEM"), '"ORDER ITEM"');
+  assert.equal(fe.idText("flowchart", "ORDER ITEM"), null, "a flowchart rejects a quoted id");
+  assert.equal(fe.idText("class", "ORDER ITEM"), null, "so does a class relation");
+  assert.equal(fe.idText("er", "__x"), null, "and a synthetic key has no spelling");
+  assert.equal(fe.canWriteKey("er", "ORDER ITEM"), true);
+  must(fe.addEdge(sp, "ORDER ITEM", "NEW1"), "an edge from a spaced ER entity");
+  assert.match(fe.addEdge(sp, "ORDER ITEM", "NEW1"), /\n  "ORDER ITEM" \|\|--o\{ NEW1$/);
 }
 
 console.log("ALL OK");
