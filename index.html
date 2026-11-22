@@ -195,7 +195,8 @@
      invert the diagram on screen (Download SVG keeps the original
      colours). Drop these rules and rebuild pkg/ once the engine ships
      transparent-background and dark-palette options. */
-  body:not(.engine-mermaid) #stage > svg > rect:first-of-type:not([x]):not([y]) { fill: transparent; }
+  body:not(.engine-mermaid) #stage > svg > rect:first-of-type:not([x]):not([y]),
+  body:not(.engine-mermaid) #stage > svg > rect.backdrop { fill: transparent; }
   :root[data-theme="dark"] body:not(.engine-mermaid) #stage > svg {
     filter: invert(.88) hue-rotate(180deg) saturate(1.3);
   }
@@ -244,6 +245,23 @@
     touch-action: none;
   }
   #link-handle::after { content: ""; position: absolute; inset: -10px; } /* bigger touch target */
+  #hover-box {
+    position: absolute; display: none; border: 1.5px dashed var(--accent); border-radius: 6px; opacity: .7;
+  }
+  #node-tools {
+    position: absolute; display: none; pointer-events: auto; transform: translateX(-50%);
+    gap: 2px; padding: 3px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg);
+    box-shadow: 0 4px 14px rgb(0 0 0 / .14);
+  }
+  #node-tools.show { display: flex; }
+  #node-tools button {
+    width: 30px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent;
+    display: grid; place-items: center; color: var(--dim); touch-action: none;
+  }
+  #node-tools button svg { width: 15px; height: 15px; }
+  #node-tools button:hover { background: var(--accent-soft); color: var(--accent); }
+  #node-tools button.danger:hover { background: var(--err-bg); color: var(--err); }
+  #node-tools button[data-act="add"] { cursor: crosshair; }
   #rename {
     position: absolute; z-index: 6; height: 34px; padding: 0 10px; text-align: center;
     font: 500 14px var(--body); color: var(--ink); background: var(--bg);
@@ -465,6 +483,12 @@
       <svg id="link-preview"><line /></svg>
       <div id="sel-box"></div>
       <button id="link-handle" tabindex="-1" title="Drag to another node to connect — or onto empty canvas for a new node"></button>
+      <div id="hover-box"></div>
+      <div id="node-tools" role="toolbar" aria-label="Node actions">
+        <button data-act="add" title="Add a connected node (drag onto another node to connect)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+        <button data-act="rename" title="Edit label"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5l3 3L6 13H3v-3z"/><path d="M9 4l3 3"/></svg></button>
+        <button data-act="delete" class="danger" title="Delete node and its edges"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M6.8 7v4M9.2 7v4"/></svg></button>
+      </div>
     </div>
     <input id="rename" type="text" spellcheck="false" autocomplete="off" aria-label="Node label" hidden>
     <div id="doc-title"></div>
@@ -936,6 +960,10 @@ function advanceAbsPos() {
 
 function render() {
   if (!good) return;
+  // The engine grows the viewBox when a node sits past the top-left;
+  // remember where it started so the camera can hold the drawing still.
+  const prevVB = stage.querySelector("svg")?.viewBox.baseVal;
+  const prevX = prevVB?.x, prevY = prevVB?.y;
   if (isSwimlaneText(good.src)) {
     stage.innerHTML = render_advance_text_svg(good.src);
   } else if (isAdvance(good.src)) {
@@ -957,8 +985,26 @@ function render() {
   good.off = isSwimlaneText(good.src) || (isAdvance(good.src) && good.advance?.direction === "horizontal")
     ? [0, 0]
     : svgOffset(stage.querySelector("svg"), isAdvance(good.src) ? advanceAbsPos() : good.pos);
+  const svgNow = stage.querySelector("svg");
+  markBackdrop(svgNow);
+  const vb = svgNow?.viewBox.baseVal;
+  if (vb && prevX !== undefined && (vb.x !== prevX || vb.y !== prevY)) {
+    cam.x += (vb.x - prevX) * cam.z;
+    cam.y += (vb.y - prevY) * cam.z;
+  }
   decorateEdges();
   applyCam();
+}
+
+// Once a node is dragged (or added) past the top-left, the engine gives
+// the white backdrop rect x/y too, which the CSS above can't tell from a
+// node; spot it by covering the whole viewBox instead.
+function markBackdrop(svg) {
+  const r = svg?.querySelector(":scope > rect");
+  const vb = svg?.viewBox.baseVal;
+  if (r && vb && +r.getAttribute("width") === vb.width && +r.getAttribute("height") === vb.height) {
+    r.classList.add("backdrop");
+  }
 }
 
 // The engine shifts the scene when it writes the SVG (bbox
@@ -1063,6 +1109,9 @@ view.addEventListener("pointerdown", (ev) => {
     return;
   }
   const i = hitNode(ev);
+  // A tap pins the toolbar (no hover on touch screens); a click just moves it.
+  if (ev.pointerType === "touch" || i < 0) setHover(i >= 0 ? good.keys[i] : null, true);
+  else setHover(good.keys[i]);
   if (editActive()) {
     // Keep keys (Delete, Enter) on the canvas, not in the code panel.
     if (document.activeElement !== renameInput) view.focus({ preventScroll: true });
@@ -1112,7 +1161,9 @@ view.addEventListener("pointermove", (ev) => {
     return;
   }
   if (!drag) {
-    view.style.cursor = hitNode(ev) >= 0 ? (editActive() && ev.shiftKey ? "crosshair" : "grab") : "default";
+    const h = hitNode(ev);
+    view.style.cursor = h >= 0 ? (editActive() && ev.shiftKey ? "crosshair" : "grab") : "default";
+    if (ev.pointerType !== "touch" && !ev.target.closest?.("#node-tools")) setHover(h >= 0 ? good.keys[h] : null);
     return;
   }
   const s = svgScale();
@@ -1132,8 +1183,10 @@ for (const t of ["pointerup", "pointercancel"]) {
     drag = null;
     pan = null;
     view.style.cursor = "default";
+    updateOverlay();
   });
 }
+view.addEventListener("pointerleave", (ev) => { if (ev.pointerType !== "touch") setHover(null); });
 
 // ── Visual edit mode (flowcharts) ──
 // Canvas actions become text edits on the Mermaid source (flowedit.js);
@@ -1153,7 +1206,7 @@ const selBox = document.getElementById("sel-box");
 const linkHandle = document.getElementById("link-handle");
 const linkPreview = document.getElementById("link-preview");
 const renameInput = document.getElementById("rename");
-const HINT = "Double-click canvas: new node · double-click node: rename · drag ● (or Shift+drag): connect · Delete: remove";
+const HINT = "Hover a node for + / edit / delete · double-click canvas: new node · drag ●: connect";
 
 function canEdit() {
   if (engine !== "flowmaid" || !good) return false;
@@ -1246,6 +1299,7 @@ function updateOverlay() {
     Object.assign(linkHandle.style, { left: r.x + r.w + 14 + "px", top: r.cy + "px" });
   }
   if (!renameInput.hidden) placeRename();
+  if (typeof placeTools === "function") placeTools();
 }
 
 // Rewrite the editor through the browser's edit stack so Ctrl/⌘+Z in
@@ -1292,7 +1346,7 @@ function applySource(edit) {
 
 // Add a node (optionally wired from `from`) at a client point.
 function addNodeAt(clientX, clientY, from = null) {
-  if (!editActive()) return;
+  if (!canEdit()) return;
   if (clientX === undefined) {
     const vr = view.getBoundingClientRect();
     // Nudge repeated "+ Node" presses so new nodes don't stack.
@@ -1300,7 +1354,13 @@ function addNodeAt(clientX, clientY, from = null) {
     clientX = vr.left + vr.width / 2 + k;
     clientY = vr.top + vr.height / 2 + k;
   }
-  const p = clientToLayout(clientX, clientY);
+  let p = clientToLayout(clientX, clientY);
+  // "+ Node" lands on the nearest free spot instead of on top of a node.
+  if (p && !from) p = freeSpot(p);
+  addNodeAtLayout(p, from);
+}
+
+function addNodeAtLayout(p, from = null) {
   let id;
   const ok = applySource((src) => {
     id = fe.freshId(src, good.keys);
@@ -1334,6 +1394,7 @@ function startLink(from, ev) {
   view.style.cursor = "crosshair";
   linkPreview.style.display = "block";
   moveLink(ev);
+  updateOverlay();
   ev.preventDefault();
   ev.stopPropagation();
 }
@@ -1348,12 +1409,16 @@ function moveLink(ev) {
 }
 
 function endLink(ev, commit) {
-  const { from, sx, sy } = link;
+  const { from, sx, sy, tap } = link;
   link = null;
   linkPreview.style.display = "none";
   if (!commit) return;
-  // A click (no real drag) on the handle or a Shift-clicked node does nothing.
-  if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+  // A click (no real drag) on the handle or a Shift-clicked node does
+  // nothing; on the toolbar's "+" it adds the next node in the flow.
+  if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) {
+    if (tap) addNext(from);
+    return;
+  }
   const i = hitNode(ev);
   if (i >= 0) {
     const to = good.keys[i];
@@ -1365,6 +1430,119 @@ function endLink(ev, commit) {
   addNodeAt(ev.clientX, ev.clientY, from);
 }
 
+// ── Hover toolbar: add / edit / delete on any node ──
+// Shown for the node under the pointer (or the last one tapped on a
+// touch screen), whether or not Edit mode is on.
+var hoverId = null, hoverPinned = false, hoverTimer = 0;
+// `var`: placeTools() runs from applyCam() before this block does.
+var nodeTools = document.getElementById("node-tools");
+var hoverBox = document.getElementById("hover-box");
+
+function setHover(id, pin = false) {
+  if (pin) hoverPinned = id !== null;
+  else if (hoverPinned && id === null) return;
+  clearTimeout(hoverTimer);
+  if (id === null && hoverId !== null && !pin) {
+    // Grace period so the pointer can travel from the node to the toolbar.
+    hoverTimer = setTimeout(() => { hoverId = null; updateOverlay(); }, 350);
+    return;
+  }
+  if (id === hoverId) return;
+  hoverId = id;
+  updateOverlay();
+}
+
+function placeTools() {
+  const busy = drag || pan || link || pinch || renaming?.id === hoverId;
+  const r = !busy && canEdit() && hoverId && good.keys.includes(hoverId) ? nodeRect(hoverId) : null;
+  nodeTools.classList.toggle("show", !!r);
+  const selected = editActive() && sel?.type === "node" && sel.id === hoverId;
+  hoverBox.style.display = r && !selected ? "block" : "none";
+  if (!r) return;
+  Object.assign(hoverBox.style, { left: r.x - 4 + "px", top: r.y - 4 + "px", width: r.w + 8 + "px", height: r.h + 8 + "px" });
+  const above = r.y - 44 >= 4;
+  Object.assign(nodeTools.style, { left: r.cx + "px", top: (above ? r.y - 44 : r.y + r.h + 10) + "px" });
+}
+
+nodeTools.addEventListener("pointerenter", () => clearTimeout(hoverTimer));
+nodeTools.addEventListener("pointerleave", (ev) => { if (ev.pointerType !== "touch") setHover(null); });
+nodeTools.addEventListener("dblclick", (e) => e.stopPropagation());
+nodeTools.addEventListener("pointerdown", (ev) => {
+  const btn = ev.target.closest("button");
+  ev.stopPropagation();
+  if (!btn || !hoverId) return;
+  ev.preventDefault();
+  const id = hoverId;
+  if (btn.dataset.act === "add") {
+    // Click: new node next to this one. Drag: connect to another node.
+    activePtrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    startLink(id, ev);
+    if (link) link.tap = true;
+    return;
+  }
+  // Act on release so a stray press can be dragged off to cancel.
+  btn.addEventListener("pointerup", function act(e) {
+    btn.removeEventListener("pointerup", act);
+    if (!btn.contains(e.target)) return;
+    if (btn.dataset.act === "rename") { setHover(null, true); startRename(id); }
+    else if (btn.dataset.act === "delete") {
+      setHover(null, true);
+      if (applySource((src) => fe.deleteNode(src, id))) {
+        savedPos.delete(id);
+        if (sel?.type === "node" && sel.id === id) select(null);
+      }
+    }
+  });
+});
+
+// Flow direction of the document: where a "next" node goes.
+function flowDir() {
+  const m = good.src.match(/^\s*(?:flowchart|graph)[ \t]+(TB|TD|BT|LR|RL)\b/m);
+  return { TB: [0, 1], TD: [0, 1], BT: [0, -1], LR: [1, 0], RL: [-1, 0] }[m?.[1]] ?? [0, 1];
+}
+
+const NEW_W = 120, NEW_H = 44, GAP = 28;
+function overlaps(x, y) {
+  for (let i = 0; i < good.keys.length; i++) {
+    const w = good.sizes[i * 2], h = good.sizes[i * 2 + 1];
+    if (Math.abs(x - good.pos[i * 2]) < (w + NEW_W) / 2 + GAP &&
+        Math.abs(y - good.pos[i * 2 + 1]) < (h + NEW_H) / 2 + GAP) return true;
+  }
+  return false;
+}
+
+// Nearest free spot to p. `across` is the direction siblings spread in;
+// `onward` the one rows advance in (the flow). The same row is tried
+// first, nearest slot out (+1, −1, +2, …), then the next rows onward;
+// with no flow (`onward` null) rows go both ways.
+function freeSpot([x, y], across = [1, 0], onward = null) {
+  if (!overlaps(x, y)) return [x, y];
+  const [ax, ay] = across;
+  const [bx, by] = onward ?? [ay, ax];
+  const sx = NEW_W + GAP, sy = NEW_H + GAP;
+  const rows = onward ? [0, 1, 2, 3, 4, 5] : [0, 1, -1, 2, -2, 3, -3];
+  for (const b of rows) {
+    for (let k = 0; k < 16; k++) {
+      const a = k === 0 ? 0 : (k % 2 ? 1 : -1) * Math.ceil(k / 2);
+      const px = x + (ax * a + bx * b) * sx, py = y + (ay * a + by * b) * sy;
+      if (!overlaps(px, py)) return [px, py];
+    }
+  }
+  return [x, y];
+}
+
+// "+" on the toolbar: a new node one step along the flow, connected.
+function addNext(from) {
+  const i = good.keys.indexOf(from);
+  if (i < 0) return;
+  const [dx, dy] = flowDir();
+  const w = good.sizes[i * 2], h = good.sizes[i * 2 + 1];
+  const step = dx ? (w + NEW_W) / 2 + 60 : (h + NEW_H) / 2 + 60;
+  const start = [good.pos[i * 2] + dx * step, good.pos[i * 2 + 1] + dy * step];
+  // Siblings spread across the flow (sideways for TD, vertically for LR).
+  addNodeAtLayout(freeSpot(start, [dy ? 1 : 0, dx ? 1 : 0], [dx, dy]), from);
+}
+
 linkHandle.addEventListener("pointerdown", (ev) => {
   if (!sel || sel.type !== "node") return;
   activePtrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
@@ -1374,7 +1552,7 @@ linkHandle.addEventListener("pointerdown", (ev) => {
 // ── Inline rename ──
 var renaming = null; // { id }
 function startRename(id) {
-  if (!editActive()) return;
+  if (!canEdit()) return;
   renaming = { id };
   renameInput.value = fe.nodeLabel(editor.value, id);
   renameInput.hidden = false;
