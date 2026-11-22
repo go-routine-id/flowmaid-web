@@ -110,11 +110,12 @@
   }
   header .sub::before { content: ""; width: 28px; height: 1px; background: var(--accent); }
   header .spacer { flex: 1; }
-  header > a {
+  header .actions { display: contents; }
+  header .actions > a {
     font: 500 11.5px var(--mono); letter-spacing: .07em; text-transform: uppercase;
     color: var(--dim); text-decoration: none; padding: 7px 8px;
   }
-  header > a:hover { color: var(--ink); }
+  header .actions > a:hover { color: var(--ink); }
 
   /* ── Controls ── */
   button {
@@ -125,7 +126,7 @@
   }
   button:hover { border-color: var(--ink); background: var(--mass); }
   button:active { background: var(--line2); }
-  button:focus-visible, header > a:focus-visible, #editor-wrap:focus-within, #file-list li:focus-visible {
+  button:focus-visible, header .actions > a:focus-visible, #editor-wrap:focus-within, #file-list li:focus-visible {
     outline: 1px solid var(--accent); outline-offset: 2px;
   }
   .split { display: inline-flex; }
@@ -303,9 +304,41 @@
   #edit-bar button { height: 28px; padding: 0 10px; font-size: 11px; white-space: nowrap; }
   #edit-hint { line-height: 1.35; }
   @media (max-width: 700px) {
-    #edit-bar { left: 8px; bottom: 56px; max-width: calc(100% - 16px); padding-left: 5px; }
+    /* Edit bar bottom-left, zoom bar bottom-right, one row. */
+    #edit-bar { left: 8px; bottom: 8px; max-width: calc(100% - 170px); padding: 3px; gap: 4px; }
+    #edit-bar button { height: 34px; padding: 0 9px; font-size: 10px; }
     #edit-hint { display: none; }
+    /* With the hint hidden, a bar with nothing to offer is just a box. */
+    body.editing #edit-bar.off { display: none; }
+    #zoombar { right: 8px; bottom: 8px; }
+    #zoombar button { width: 34px; height: 40px; }
+    #zoombar #zoom-fit { padding: 0 9px; }
   }
+  @media (max-width: 400px) { #zoombar .pct { display: none; } }
+  /* Fingers: bigger targets on the canvas toolbars. */
+  @media (pointer: coarse) {
+    .tools button { width: 40px; height: 38px; }
+    .tools button svg { width: 18px; height: 18px; }
+    .tools button.wide { width: auto; padding: 0 12px; font-size: 11px; }
+    #palette { grid-template-columns: repeat(5, 32px); gap: 10px; padding: 12px; }
+    #palette button { width: 32px; height: 32px; }
+    #link-handle { width: 24px; height: 24px; margin: -12px 0 0 -12px; }
+    /* 16px keeps iOS from zooming the page when the box takes focus. */
+    #rename { height: 42px; font-size: 16px; }
+  }
+  /* ── Fullscreen: the canvas alone ── */
+  #zoom-full svg { width: 15px; height: 15px; display: block; margin: auto; }
+  #zoom-full .fs-off, body.fullscreen #zoom-full .fs-on { display: none; }
+  body.fullscreen #zoom-full .fs-off { display: inline; }
+  body.fullscreen #zoom-full { background: var(--accent); color: var(--accent-ink); }
+  body.fullscreen header, body.fullscreen footer, body.fullscreen #files,
+  body.fullscreen #editor-wrap, body.fullscreen .seam-anchor, body.fullscreen #drop-hint { display: none !important; }
+  /* The error bar floats over the canvas instead of taking a row. */
+  body.fullscreen #error { position: fixed; left: 0; right: 0; top: 0; z-index: 40; }
+  /* Notches and home bars: keep the floating bars clear of them. */
+  body.fullscreen #zoombar { bottom: max(8px, env(safe-area-inset-bottom)); right: max(8px, env(safe-area-inset-right)); }
+  body.fullscreen #edit-bar { bottom: max(8px, env(safe-area-inset-bottom)); left: max(8px, env(safe-area-inset-left)); }
+
   /* ── Collapse handle riding the editor/view divider ── */
   .seam-anchor { position: relative; width: 0; flex: none; }
   .collapse-handle {
@@ -411,7 +444,7 @@
     body:not(.has-files):not(.has-remembered) #files { display: none; }
     #editor-wrap {
       order: 3; width: auto; min-width: 0;
-      height: 36vh; height: 36dvh; flex: none;
+      height: 34vh; height: 34dvh; flex: none;
       border-right: 0; border-top: 1px solid var(--line2);
       resize: vertical; /* drag the divider taller if needed */
     }
@@ -421,9 +454,45 @@
     body.editor-hidden .collapse-handle { left: 12px; margin-top: -60px; }
   }
   @media (max-width: 720px) {
-    header { gap: 6px; padding: 8px 12px; }
-    button { font-size: 10.5px; padding: 6px 9px; }
-    footer { justify-content: center; padding-inline: 10px; }
+    /* One header row: the logo, then every control in a strip that
+       scrolls sideways, most-used first. */
+    /* z-index: the dropdown sheets must sit over the canvas's floating bars. */
+    header { flex-wrap: nowrap; gap: 10px; padding: 0 0 0 12px; min-height: 48px; position: relative; z-index: 30; }
+    header h1 { font-size: 19px; flex: none; margin: 0; }
+    header .spacer { display: none; }
+    header .actions {
+      display: flex; flex: 1; min-width: 0; align-items: center; gap: 6px;
+      overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+      padding: 8px 30px 8px 2px;
+    }
+    header .actions::-webkit-scrollbar { display: none; }
+    header .actions > * { flex: none; }
+    /* Fade at the right edge says "there's more" (a mask would also hide
+       the fixed dropdown sheets below). */
+    header::after {
+      content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 30px; pointer-events: none;
+      background: linear-gradient(to right, transparent, var(--bg) 80%);
+    }
+    #examples-dd { order: 1; } #open { order: 2; } #save { order: 3; } #edit-mode { order: 4; }
+    #export-dd { order: 5; } #relayout { order: 6; } #engine { order: 7; } .modes { order: 8; }
+    header .actions > a { order: 9; padding-inline: 4px; }
+    button { font-size: 10.5px; padding: 7px 10px; letter-spacing: .05em; }
+    #download { min-width: 0; }
+    /* Dropdowns open as a sheet along the bottom of the screen. */
+    .dd { position: static; }
+    .dd-menu, .dd-menu.flip {
+      position: fixed; left: 8px; right: 8px; top: auto; bottom: 8px; z-index: 50;
+      min-width: 0; max-width: none; max-height: 62vh; max-height: 62dvh;
+      /* The huge spread dims the page behind the sheet. */
+      box-shadow: 0 0 0 100vmax rgb(0 0 0 / .32), 0 -10px 32px rgb(0 0 0 / .28); transform: translateY(12px);
+    }
+    .dd-menu li { padding: 14px 16px; font-size: 13px; }
+    footer {
+      flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; justify-content: flex-start;
+      min-height: 30px; padding-inline: 10px; white-space: nowrap;
+    }
+    footer::-webkit-scrollbar { display: none; }
+    footer a { padding: 4px 6px; }
   }
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; animation: none !important; }
@@ -435,6 +504,9 @@
   <h1>flowmaid</h1>
   <span class="sub">Mermaid-like diagrams · pure Rust · in your browser</span>
   <span class="spacer"></span>
+  <!-- Desktop: display: contents (one row with the logo). Phones: a
+       sideways-scrolling strip next to the logo. -->
+  <div class="actions">
   <a href="/flowmaid/docs/">Docs</a>
   <div class="modes" role="group" aria-label="Colour mode">
     <button data-mode="dark" title="Ink — dark mode (T)" onclick="setTheme('dark')">Ink</button>
@@ -474,6 +546,7 @@
       <li role="menuitem" data-act="copy-png">Copy as image (PNG)</li>
       <li role="menuitem" data-act="copy-svg">Copy SVG code</li>
     </ul>
+  </div>
   </div>
 </header>
 <main>
@@ -545,6 +618,7 @@
       <button id="zoom-pct" class="pct" title="Reset to 100%">100%</button>
       <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
       <button id="zoom-fit" title="Fit diagram to view" aria-label="Fit diagram to view">Fit</button>
+      <button id="zoom-full" title="Fullscreen (Shift+F)" aria-label="Fullscreen" aria-pressed="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="fs-on" d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/><path class="fs-off" d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5"/></svg></button>
     </div>
   </div>
 </main>
@@ -1576,8 +1650,9 @@ function placeTools() {
   hoverBox.style.display = r && !selected ? "block" : "none";
   if (!r) return;
   Object.assign(hoverBox.style, { left: r.x - 4 + "px", top: r.y - 4 + "px", width: r.w + 8 + "px", height: r.h + 8 + "px" });
-  const above = r.y - 44 >= 4;
-  Object.assign(nodeTools.style, { left: r.cx + "px", top: (above ? r.y - 44 : r.y + r.h + 10) + "px" });
+  const th = nodeTools.offsetHeight + 8;
+  const above = r.y - th >= 4;
+  Object.assign(nodeTools.style, { left: r.cx + "px", top: (above ? r.y - th : r.y + r.h + 10) + "px" });
 }
 
 nodeTools.addEventListener("pointerenter", () => clearTimeout(hoverTimer));
@@ -1746,7 +1821,7 @@ function placeSelectionTools() {
   if (em) {
     const kind = memo(`op:${sel.from}>${sel.to}#${sel.nth}`, () => fe.edgeOp(good.src, sel.from, sel.to, sel.nth)?.kind);
     for (const b of edgeTools.querySelectorAll("[data-kind]")) b.setAttribute("aria-pressed", String(b.dataset.kind === kind));
-    Object.assign(edgeTools.style, { left: em[0] + "px", top: Math.max(4, em[1] - 48) + "px" });
+    Object.assign(edgeTools.style, { left: em[0] + "px", top: Math.max(4, em[1] - edgeTools.offsetHeight - 14) + "px" });
   }
   // Several nodes: a box each and one toolbar over them all.
   const ids = editActive() && sel?.type === "nodes" ? sel.ids : [];
@@ -1763,8 +1838,9 @@ function placeSelectionTools() {
     const homes = memo("member", () => fe.subgraphs(good.src).member);
     const h = new Set(ids.map((id) => homes.get(id) ?? null));
     multiTools.querySelector('[data-act="ungroup"]').hidden = !(h.size === 1 && !h.has(null));
-    const above = u.y - 48 >= 4;
-    Object.assign(multiTools.style, { left: u.x + u.w / 2 + "px", top: (above ? u.y - 48 : u.y + u.h + 12) + "px" });
+    const th = multiTools.offsetHeight + 12;
+    const above = u.y - th >= 4;
+    Object.assign(multiTools.style, { left: u.x + u.w / 2 + "px", top: (above ? u.y - th : u.y + u.h + 12) + "px" });
   }
   if (paletteFor) placePalette();
 }
@@ -1910,7 +1986,7 @@ function placeRename() {
     if (!r) return;
     cx = r.x + r.w / 2; cy = r.y - 30; w = Math.max(170, Math.min(r.w, 260));
   }
-  Object.assign(renameInput.style, { left: cx - w / 2 + "px", top: cy - 17 + "px", width: w + "px" });
+  Object.assign(renameInput.style, { left: cx - w / 2 + "px", top: cy - renameInput.offsetHeight / 2 + "px", width: w + "px" });
 }
 function commitRename() {
   if (!renaming) return;
@@ -1956,7 +2032,11 @@ document.addEventListener("keydown", (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === "g" && selIds().length) { e.preventDefault(); groupSelection(); return; }
   if (mod) return;
-  if (e.key === "Escape") { if (paletteFor) closePalette(); else if (sel) select(null); return; }
+  if (e.key === "Escape") {
+    // Handled here first; fullscreen only exits on an Escape nobody used.
+    if (paletteFor) { closePalette(); e.preventDefault(); } else if (sel) { select(null); e.preventDefault(); }
+    return;
+  }
   if (!sel) return;
   if (e.target.closest?.("button") && (e.key === "Enter" || e.key === " ")) return;
   const one = sel.type === "node" ? sel.id : null;
@@ -1986,6 +2066,45 @@ document.getElementById("zoom-out").addEventListener("click", () => {
   zoomAt(vr.width / 2, vr.height / 2, 1 / 1.25);
 });
 document.getElementById("zoom-fit").addEventListener("click", () => fitView());
+
+// ── Fullscreen ──
+// The page hides everything but the canvas (body.fullscreen); where the
+// browser allows it, the window goes fullscreen too. iPhone Safari has
+// no Fullscreen API for pages, so there it is the CSS mode alone.
+const fullBtn = document.getElementById("zoom-full");
+function setFullscreen(on) {
+  if (on === document.body.classList.contains("fullscreen")) return;
+  // Keep the point at the middle of the canvas in the middle.
+  document.body.classList.toggle("fullscreen", on);
+  fullBtn.setAttribute("aria-pressed", String(on));
+  fullBtn.title = on ? "Exit fullscreen (Esc)" : "Fullscreen (Shift+F)";
+  keepCentre();
+  const el = document.documentElement;
+  if (on && !document.fullscreenElement && el.requestFullscreen) {
+    el.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+  } else if (!on && document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+}
+function toggleFullscreen() { setFullscreen(!document.body.classList.contains("fullscreen")); }
+fullBtn.addEventListener("click", toggleFullscreen);
+// Leaving the browser's fullscreen (Esc, back gesture) leaves ours too.
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement) setFullscreen(false);
+});
+// When the canvas changes size (fullscreen, the browser's own fullscreen
+// a moment later, rotating a phone), keep its middle point in the middle.
+let viewSize = null;
+function keepCentre() {
+  const r = view.getBoundingClientRect();
+  if (viewSize) {
+    cam.x += (r.width - viewSize.w) / 2;
+    cam.y += (r.height - viewSize.h) / 2;
+  }
+  viewSize = { w: r.width, h: r.height };
+  applyCam();
+}
+new ResizeObserver(keepCentre).observe(view);
 document.getElementById("zoom-pct").addEventListener("click", () => fitView(1));
 view.addEventListener("dblclick", (e) => {
   if (e.target.closest?.("#edit-bar, #rename, #zoombar, #link-handle, .tools, #palette")) return;
@@ -2671,6 +2790,7 @@ document.addEventListener("keydown", (e) => {
   const k = e.key;
   if (k === "e" || k === "E") document.getElementById("engine").click();
   else if (k === "t" || k === "T") toggleTheme();
+  else if (k === "F" && e.shiftKey) toggleFullscreen();
   else if (k === "f" || k === "F") fitView();
   else if (k === "v" || k === "V") setEditMode(!editMode);
   else if ((k === "n" || k === "N") && editActive()) addNodeAt();
@@ -2681,6 +2801,14 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     selectFile(Math.max(0, current - 1));
   }
+});
+
+// Escape leaves fullscreen once nothing else wanted it (palette,
+// selection, rename box, menus).
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || e.defaultPrevented || !document.body.classList.contains("fullscreen")) return;
+  if (e.target.closest?.("textarea, input, .dd")) return;
+  setFullscreen(false);
 });
 
 await init();

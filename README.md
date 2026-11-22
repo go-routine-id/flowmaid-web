@@ -26,6 +26,8 @@ Flowcharts can be edited straight on the canvas; every action is written back in
 - **Several nodes**: Shift+click or Ctrl/⌘+click to select more, then **Group** (or Ctrl/⌘+G) wraps them in a `subgraph` and asks for its title; **Ungroup**, colour and delete work on the whole selection.
 - Double-click empty canvas for a new node; drag the ● handle of a selected node (or Shift+drag a node) to connect.
 
+The ⛶ button on the zoom bar (or Shift+F) shows the canvas alone, fullscreen where the browser allows it; Esc leaves.
+
 The **Edit** button (`V`) turns these canvas gestures off and on; it is on by default. Only the statements an action touches are rewritten (`flowedit.js`), and Ctrl/⌘+Z in the code panel undoes canvas edits too. Tests: `node tests/flowedit.test.mjs`.
 
 ## Building
