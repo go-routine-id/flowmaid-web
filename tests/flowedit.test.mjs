@@ -72,4 +72,49 @@ assert.equal(ok(fe.deleteNode(L, "B")), "graph LR\nA\nC-->D\nlinkStyle 0 stroke:
 // Non-ASCII ids get their style lines scrubbed too.
 const U = "graph LR\nÄ[x] --> B\nstyle Ä fill:#f00\nstyle B fill:#0f0";
 assert.equal(ok(fe.deleteNode(U, "Ä")), "graph LR\nB\nstyle B fill:#0f0");
+
+// ── Edges, colours, groups ──
+{
+const svg = (s) => m.render_routed(s, m.auto_positions(s));
+const titles = (s) => [...svg(s).matchAll(/<title>([^<]*→[^<]*)<\/title>/g)].map(x => x[1]);
+// ops
+for (const [raw, exp] of [["-->", {start:"",kind:"solid",end:">",label:null}], ["-->|yes|", {start:"",kind:"solid",end:">",label:"yes"}],
+  ["-- hi there -->", {start:"",kind:"solid",end:">",label:"hi there"}], ["-.->", {start:"",kind:"dotted",end:">",label:null}],
+  ["==>", {start:"",kind:"thick",end:">",label:null}], ["---", {start:"",kind:"solid",end:"",label:null}], ["<-->", {start:"<",kind:"solid",end:">",label:null}],
+  ["--o", {start:"",kind:"solid",end:"o",label:null}], ["x--x", {start:"x",kind:"solid",end:"x",label:null}], ["-. t .->", {start:"",kind:"dotted",end:">",label:"t"}]]) {
+  assert.deepEqual(fe.parseOp(raw), exp, raw);
+}
+assert.equal(fe.buildOp({kind:"dotted", end:">", label:"a"}), "-.->|a|");
+assert.equal(fe.buildOp({kind:"thick", end:""}), "===");
+const S = "flowchart TD\n    A[Start] --> B[Read]\n    B -->|yes| C{OK?}\n    C & D --> E\n    X --> Y --> Z";
+let s;
+s = fe.setEdgeLabel(S, "A", "B", 0, "go"); assert.match(s, /A\[Start\] -->\|go\| B\[Read\]/); assert.ok(titles(s).includes("A → B: go"));
+s = fe.setEdgeLabel(S, "B", "C", 0, ""); assert.match(s, /B --> C\{OK\?\}/);
+s = fe.setEdgeKind(S, "B", "C", 0, "dotted"); assert.match(s, /B -\.->\|yes\| C/); assert.match(svg(s), /stroke-dasharray="2 3"/);
+s = fe.setEdgeKind(S, "A", "B", 0, "thick"); assert.match(s, /A\[Start\] ==> B\[Read\]/);
+s = fe.reverseEdge(S, "A", "B", 0); assert.match(s, /B\[Read\] --> A\[Start\]/); assert.ok(titles(s).includes("B → A"));
+s = fe.reverseEdge(S, "C", "E", 0); assert.ok(titles(s).includes("E → C") && titles(s).includes("D → E") && !titles(s).includes("C → E"), s);
+s = fe.reverseEdge(S, "Y", "Z", 0); assert.ok(titles(s).includes("Z → Y") && titles(s).includes("X → Y"), s);
+s = fe.setEdgeLabel(S, "X", "Y", 0, "a|b"); assert.ok(titles(s).some(t => t.startsWith("X → Y: ")), s); m.node_keys(s);
+assert.equal(fe.edgeOp(S, "B", "C", 0).label, "yes");
+// style
+s = fe.setNodeStyle(S, ["A", "B"], { fill: "#ffe3e3", stroke: "#e03131" });
+assert.match(s, /style A fill:#ffe3e3,stroke:#e03131\n    style B fill:#ffe3e3,stroke:#e03131$/);
+assert.match(svg(s), /fill="#ffe3e3" stroke="#e03131"/);
+assert.equal(fe.nodeFill(s, "A"), "#ffe3e3");
+let s2 = fe.setNodeStyle(s + "\n    style A stroke-width:3px", ["A"], { fill: "#e5f5ea", stroke: "#33a35c" });
+assert.equal((s2.match(/style A /g) || []).length, 1); assert.match(s2, /style A fill:#e5f5ea,stroke:#33a35c,stroke-width:3px/);
+s2 = fe.setNodeStyle(s2, ["A"], null); assert.match(s2, /style A stroke-width:3px/);
+s2 = fe.setNodeStyle(s, ["A"], null); assert.ok(!/style A/.test(s2));
+// groups
+s = fe.groupNodes(S, ["A", "B"], "G1", "Input");
+assert.match(s, /\n    subgraph G1 \[Input\]\n        A\n        B\n    end$/, s);
+assert.match(svg(s), />Input</);
+assert.equal(fe.subgraphs(s).member.get("A"), "G1");
+const s3 = fe.groupNodes(s, ["A"], "G2", "Inner");
+assert.equal(fe.subgraphs(s3).member.get("A"), "G2"); assert.match(svg(s3), />Inner</); assert.throws(() => fe.groupNodes(s, ["A", "X"], "G2", "x"), /different groups/);
+assert.equal(fe.ungroup(s, "G1"), S);
+assert.equal(fe.deleteNode(fe.deleteNode(s, "A"), "B").includes("subgraph"), false);
+assert.equal(fe.renameGroup(s, "G1", "In put (x)").includes('subgraph G1 ["In put (x)"]'), true);
+}
 console.log("ALL OK");

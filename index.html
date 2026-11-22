@@ -248,20 +248,43 @@
   #hover-box {
     position: absolute; display: none; border: 1.5px dashed var(--accent); border-radius: 6px; opacity: .7;
   }
-  #node-tools {
+  .tools {
     position: absolute; display: none; pointer-events: auto; transform: translateX(-50%);
-    gap: 2px; padding: 3px; border: 1px solid var(--line2); border-radius: 8px; background: var(--bg);
-    box-shadow: 0 4px 14px rgb(0 0 0 / .14);
+    align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--line2); border-radius: 8px;
+    background: var(--bg); box-shadow: 0 4px 14px rgb(0 0 0 / .14); white-space: nowrap;
   }
-  #node-tools.show { display: flex; }
-  #node-tools button {
+  .tools.show { display: flex; }
+  .tools button {
     width: 30px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent;
     display: grid; place-items: center; color: var(--dim); touch-action: none;
   }
-  #node-tools button svg { width: 15px; height: 15px; }
-  #node-tools button:hover { background: var(--accent-soft); color: var(--accent); }
-  #node-tools button.danger:hover { background: var(--err-bg); color: var(--err); }
+  .tools button.wide { width: auto; padding: 0 9px; font-size: 10.5px; }
+  .tools button[hidden] { display: none; }
+  .tools button svg { width: 15px; height: 15px; }
+  .tools button:hover, .tools button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+  .tools button.danger:hover { background: var(--err-bg); color: var(--err); }
+  .tools .sep { width: 1px; height: 18px; margin: 0 2px; background: var(--line2); }
+  .tools .count { padding: 0 6px; font: 500 10.5px var(--mono); color: var(--muted); }
   #node-tools button[data-act="add"] { cursor: crosshair; }
+  #multi-boxes > div {
+    position: absolute; border: 2px solid var(--accent); border-radius: 6px; box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  #palette {
+    position: absolute; display: none; pointer-events: auto; z-index: 7;
+    grid-template-columns: repeat(5, 24px); gap: 7px; padding: 9px;
+    border: 1px solid var(--line2); border-radius: 8px; background: var(--bg); box-shadow: 0 6px 18px rgb(0 0 0 / .18);
+  }
+  #palette.show { display: grid; }
+  #palette button {
+    width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 2px solid; cursor: pointer;
+    transition: transform .08s;
+  }
+  #palette button:hover, #palette button:focus-visible { transform: scale(1.18); }
+  #palette button[data-i="0"] {
+    background: linear-gradient(135deg, transparent 45%, var(--err) 45% 55%, transparent 55%), var(--bg);
+    border-color: var(--line2);
+  }
+  #stage .edge-label-hit { cursor: pointer; }
   #rename {
     position: absolute; z-index: 6; height: 34px; padding: 0 10px; text-align: center;
     font: 500 14px var(--body); color: var(--ink); background: var(--bg);
@@ -484,11 +507,31 @@
       <div id="sel-box"></div>
       <button id="link-handle" tabindex="-1" title="Drag to another node to connect — or onto empty canvas for a new node"></button>
       <div id="hover-box"></div>
-      <div id="node-tools" role="toolbar" aria-label="Node actions">
+      <div id="multi-boxes"></div>
+      <div id="node-tools" class="tools" role="toolbar" aria-label="Node actions">
         <button data-act="add" title="Add a connected node (drag onto another node to connect)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
         <button data-act="rename" title="Edit label"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5l3 3L6 13H3v-3z"/><path d="M9 4l3 3"/></svg></button>
+        <button data-act="color" title="Colour"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2a6 6 0 1 0 0 12c1 0 1.4-.9.9-1.6-.5-.8 0-1.8 1-1.8H12a2 2 0 0 0 2-2A6.2 6.2 0 0 0 8 2z"/><circle cx="5" cy="7.2" r=".7" fill="currentColor"/><circle cx="8" cy="5" r=".7" fill="currentColor"/><circle cx="11" cy="7.2" r=".7" fill="currentColor"/></svg></button>
         <button data-act="delete" class="danger" title="Delete node and its edges"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M6.8 7v4M9.2 7v4"/></svg></button>
       </div>
+      <div id="edge-tools" class="tools" role="toolbar" aria-label="Edge actions">
+        <button data-act="label" title="Edit label (F2 / Enter)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5l3 3L6 13H3v-3z"/><path d="M9 4l3 3"/></svg></button>
+        <span class="sep"></span>
+        <button data-kind="solid" title="Solid line"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h12"/></svg></button>
+        <button data-kind="dotted" title="Dotted line"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h12" stroke-dasharray="1.2 2.6"/></svg></button>
+        <button data-kind="thick" title="Thick line"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8h12" stroke-width="3.6"/></svg></button>
+        <span class="sep"></span>
+        <button data-act="reverse" title="Reverse direction"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 5.5h10.5M10.5 3l2.5 2.5-2.5 2.5M13.5 10.5H3M5.5 8L3 10.5 5.5 13"/></svg></button>
+        <button data-act="delete" class="danger" title="Delete edge (Delete)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M6.8 7v4M9.2 7v4"/></svg></button>
+      </div>
+      <div id="multi-tools" class="tools" role="toolbar" aria-label="Selection actions">
+        <span class="count"></span>
+        <button data-act="group" class="wide" title="Group into a subgraph (Ctrl/⌘+G)">Group</button>
+        <button data-act="ungroup" class="wide" title="Remove the group these nodes are in">Ungroup</button>
+        <button data-act="color" title="Colour"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2a6 6 0 1 0 0 12c1 0 1.4-.9.9-1.6-.5-.8 0-1.8 1-1.8H12a2 2 0 0 0 2-2A6.2 6.2 0 0 0 8 2z"/><circle cx="5" cy="7.2" r=".7" fill="currentColor"/><circle cx="8" cy="5" r=".7" fill="currentColor"/><circle cx="11" cy="7.2" r=".7" fill="currentColor"/></svg></button>
+        <button data-act="delete" class="danger" title="Delete selected (Delete)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M6.8 7v4M9.2 7v4"/></svg></button>
+      </div>
+      <div id="palette" role="menu" aria-label="Node colour"></div>
     </div>
     <input id="rename" type="text" spellcheck="false" autocomplete="off" aria-label="Node label" hidden>
     <div id="doc-title"></div>
@@ -1115,14 +1158,23 @@ view.addEventListener("pointerdown", (ev) => {
   if (editActive()) {
     // Keep keys (Delete, Enter) on the canvas, not in the code panel.
     if (document.activeElement !== renameInput) view.focus({ preventScroll: true });
-    if (i >= 0 && ev.shiftKey) { startLink(good.keys[i], ev); return; }
+    // Shift+drag connects; Shift+click (no drag) and Ctrl/⌘+click add
+    // to the selection.
+    if (i >= 0 && ev.shiftKey) { startLink(good.keys[i], ev); if (link) link.shift = true; return; }
+    if (i >= 0 && (ev.ctrlKey || ev.metaKey)) { toggleSelect(good.keys[i]); ev.preventDefault(); return; }
     const edgeEl = i < 0 && ev.target.closest?.("[data-edge-from]");
     if (edgeEl) {
       select({ type: "edge", from: edgeEl.dataset.edgeFrom, to: edgeEl.dataset.edgeTo, nth: +edgeEl.dataset.edgeNth });
       ev.preventDefault();
       return;
     }
-    select(i >= 0 ? { type: "node", id: good.keys[i] } : null);
+    // Pressing a node already in a multi-selection keeps the selection
+    // (until the press ends without a drag: then just that node).
+    if (i >= 0 && sel?.type === "nodes" && sel.ids.includes(good.keys[i])) {
+      narrowTo = { id: good.keys[i], x: ev.clientX, y: ev.clientY };
+    } else {
+      select(i >= 0 ? { type: "node", id: good.keys[i] } : null);
+    }
   }
   if (i < 0) {
     // Empty canvas: Figma-style pan.
@@ -1163,7 +1215,7 @@ view.addEventListener("pointermove", (ev) => {
   if (!drag) {
     const h = hitNode(ev);
     view.style.cursor = h >= 0 ? (editActive() && ev.shiftKey ? "crosshair" : "grab") : "default";
-    if (ev.pointerType !== "touch" && !ev.target.closest?.("#node-tools")) setHover(h >= 0 ? good.keys[h] : null);
+    if (ev.pointerType !== "touch" && !ev.target.closest?.(".tools, #palette")) setHover(h >= 0 ? good.keys[h] : null);
     return;
   }
   const s = svgScale();
@@ -1180,6 +1232,10 @@ for (const t of ["pointerup", "pointercancel"]) {
     activePtrs.delete(ev.pointerId);
     if (activePtrs.size < 2) pinch = null;
     if (link) endLink(ev, t === "pointerup");
+    if (narrowTo && t === "pointerup" && Math.hypot(ev.clientX - narrowTo.x, ev.clientY - narrowTo.y) < 4) {
+      select({ type: "node", id: narrowTo.id });
+    }
+    narrowTo = null;
     drag = null;
     pan = null;
     view.style.cursor = "default";
@@ -1197,6 +1253,7 @@ view.addEventListener("pointerleave", (ev) => { if (ev.pointerType !== "touch") 
 var editMode = false;
 var sel = null; // { type: "node", id } | { type: "edge", from, to, nth }
 var link = null; // { from, x, y } while dragging a new connection
+var narrowTo = null; // a press on a node inside a multi-selection
 const editBtn = document.getElementById("edit-mode");
 const editBar = document.getElementById("edit-bar");
 const editHint = document.getElementById("edit-hint");
@@ -1206,7 +1263,7 @@ const selBox = document.getElementById("sel-box");
 const linkHandle = document.getElementById("link-handle");
 const linkPreview = document.getElementById("link-preview");
 const renameInput = document.getElementById("rename");
-const HINT = "Hover a node for + / edit / delete · double-click canvas: new node · drag ●: connect";
+const HINT = "Tab: child · Enter: sibling · F2: rename · Shift/Ctrl+click: multi-select · Ctrl+G: group · double-click canvas: new node";
 
 function canEdit() {
   if (engine !== "flowmaid" || !good) return false;
@@ -1241,6 +1298,11 @@ function syncEditUI() {
 function selExists() {
   if (!good || !sel) return false;
   if (sel.type === "node") return good.keys.includes(sel.id);
+  if (sel.type === "nodes") {
+    sel.ids = sel.ids.filter((id) => good.keys.includes(id));
+    if (sel.ids.length === 1) sel = { type: "node", id: sel.ids[0] };
+    return sel.type === "node" || sel.ids.length > 1;
+  }
   return !!stage.querySelector(`[data-edge-from="${CSS.escape(sel.from)}"][data-edge-to="${CSS.escape(sel.to)}"][data-edge-nth="${sel.nth}"]`);
 }
 
@@ -1260,6 +1322,11 @@ function decorateEdges() {
   svg.querySelectorAll(".edge-sel").forEach((el) => el.classList.remove("edge-sel"));
   if (!editActive()) return;
   const seen = new Map();
+  const labelled = [];
+  svg.querySelectorAll(".edge-label-hit").forEach((el) => {
+    el.classList.remove("edge-label-hit");
+    delete el.dataset.edgeFrom; delete el.dataset.edgeTo; delete el.dataset.edgeNth;
+  });
   for (const p of [...svg.querySelectorAll(":scope > path")]) {
     const t = p.querySelector("title")?.textContent ?? "";
     const m = t.match(/^(\S+) → ([^\s:]+)/u);
@@ -1278,6 +1345,33 @@ function decorateEdges() {
     const on = sel?.type === "edge" && sel.from === m[1] && sel.to === m[2] && sel.nth === nth;
     if (on) p.classList.add("edge-sel");
     p.after(hit);
+    const label = t.match(/^\S+ → [^\s:]+: (.*)$/su)?.[1];
+    if (label) labelled.push({ hit, label });
+  }
+  // Clicking an edge's label picks the edge: match label text, and among
+  // same-text labels the edge that passes closest.
+  for (const tx of svg.querySelectorAll(":scope > text")) {
+    const cands = labelled.filter((e) => e.label === tx.textContent);
+    if (!cands.length) continue;
+    let best = cands[0];
+    if (cands.length > 1) {
+      const x = +tx.getAttribute("x"), y = +tx.getAttribute("y");
+      let bestD = Infinity;
+      for (const c of cands) {
+        const L = c.hit.getTotalLength();
+        for (let k = 0; k <= 12; k++) {
+          const pt = c.hit.getPointAtLength((L * k) / 12);
+          const d = Math.hypot(pt.x - x, pt.y - y);
+          if (d < bestD) { bestD = d; best = c; }
+        }
+      }
+    }
+    const box = tx.previousElementSibling?.tagName === "rect" ? tx.previousElementSibling : null;
+    for (const el of [tx, box]) {
+      if (!el) continue;
+      el.classList.add("edge-label-hit");
+      Object.assign(el.dataset, best.hit.dataset);
+    }
   }
 }
 
@@ -1299,7 +1393,7 @@ function updateOverlay() {
     Object.assign(linkHandle.style, { left: r.x + r.w + 14 + "px", top: r.cy + "px" });
   }
   if (!renameInput.hidden) placeRename();
-  if (typeof placeTools === "function") placeTools();
+  if (typeof placeTools === "function") { placeTools(); placeSelectionTools(); }
 }
 
 // Rewrite the editor through the browser's edit stack so Ctrl/⌘+Z in
@@ -1370,17 +1464,35 @@ function addNodeAtLayout(p, from = null) {
   });
   if (!ok) return;
   select({ type: "node", id });
+  reveal(id);
   startRename(id);
+}
+
+// Pan just enough to bring a node into view (clear of the floating bars).
+function reveal(id) {
+  const r = nodeRect(id);
+  if (!r) return;
+  const vr = view.getBoundingClientRect();
+  const m = 48, bottom = editMode ? 110 : 64;
+  let dx = 0, dy = 0;
+  if (r.x < m) dx = m - r.x;
+  else if (r.x + r.w > vr.width - m) dx = vr.width - m - (r.x + r.w);
+  if (r.y < m + 40) dy = m + 40 - r.y;
+  else if (r.y + r.h > vr.height - bottom) dy = vr.height - bottom - (r.y + r.h);
+  if (!dx && !dy) return;
+  cam.x += dx; cam.y += dy;
+  applyCam();
 }
 
 function deleteSelection() {
   if (!editActive() || !sel) return;
   const s = sel;
-  const ok = applySource((src) => s.type === "node"
-    ? fe.deleteNode(src, s.id)
-    : fe.deleteEdge(src, s.from, s.to, s.nth));
+  const ids = selIds();
+  const ok = applySource((src) => s.type === "edge"
+    ? fe.deleteEdge(src, s.from, s.to, s.nth)
+    : ids.reduce((acc, id) => fe.deleteNode(acc, id), src));
   if (!ok) return;
-  if (s.type === "node") savedPos.delete(s.id);
+  ids.forEach((id) => savedPos.delete(id));
   select(null);
 }
 
@@ -1409,7 +1521,7 @@ function moveLink(ev) {
 }
 
 function endLink(ev, commit) {
-  const { from, sx, sy, tap } = link;
+  const { from, sx, sy, tap, shift } = link;
   link = null;
   linkPreview.style.display = "none";
   if (!commit) return;
@@ -1417,6 +1529,7 @@ function endLink(ev, commit) {
   // nothing; on the toolbar's "+" it adds the next node in the flow.
   if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) {
     if (tap) addNext(from);
+    else if (shift) toggleSelect(from);
     return;
   }
   const i = hitNode(ev);
@@ -1439,6 +1552,7 @@ var nodeTools = document.getElementById("node-tools");
 var hoverBox = document.getElementById("hover-box");
 
 function setHover(id, pin = false) {
+  if (paletteFor && id === null) return;
   if (pin) hoverPinned = id !== null;
   else if (hoverPinned && id === null) return;
   clearTimeout(hoverTimer);
@@ -1453,7 +1567,9 @@ function setHover(id, pin = false) {
 }
 
 function placeTools() {
-  const busy = drag || pan || link || pinch || renaming?.id === hoverId;
+  // A node in a multi-selection uses the selection's toolbar instead.
+  const busy = drag || pan || link || pinch || renaming?.id === hoverId ||
+    (sel?.type === "nodes" && sel.ids.includes(hoverId));
   const r = !busy && canEdit() && hoverId && good.keys.includes(hoverId) ? nodeRect(hoverId) : null;
   nodeTools.classList.toggle("show", !!r);
   const selected = editActive() && sel?.type === "node" && sel.id === hoverId;
@@ -1485,6 +1601,7 @@ nodeTools.addEventListener("pointerdown", (ev) => {
     btn.removeEventListener("pointerup", act);
     if (!btn.contains(e.target)) return;
     if (btn.dataset.act === "rename") { setHover(null, true); startRename(id); }
+    else if (btn.dataset.act === "color") togglePalette([id], btn);
     else if (btn.dataset.act === "delete") {
       setHover(null, true);
       if (applySource((src) => fe.deleteNode(src, id))) {
@@ -1543,6 +1660,210 @@ function addNext(from) {
   addNodeAtLayout(freeSpot(start, [dy ? 1 : 0, dx ? 1 : 0], [dx, dy]), from);
 }
 
+// Enter: a node beside this one, wired from the same parent.
+function addSibling(id) {
+  const i = good.keys.indexOf(id);
+  if (i < 0) return;
+  const parent = fe.edgeList(good.src).find(([a, b]) => b === id && a !== id)?.[0] ?? null;
+  const [dx, dy] = flowDir();
+  const across = [dy ? 1 : 0, dx ? 1 : 0];
+  const w = good.sizes[i * 2], h = good.sizes[i * 2 + 1];
+  const step = across[0] ? (w + NEW_W) / 2 + 40 : (h + NEW_H) / 2 + 40;
+  const start = [good.pos[i * 2] + across[0] * step, good.pos[i * 2 + 1] + across[1] * step];
+  addNodeAtLayout(freeSpot(start, across), parent);
+}
+
+// Arrow keys: the nearest node that way, favouring straight lines.
+function walk(id, [dx, dy]) {
+  const i = good.keys.indexOf(id);
+  if (i < 0) return;
+  const x = good.pos[i * 2], y = good.pos[i * 2 + 1];
+  let best = -1, bestScore = Infinity;
+  for (let j = 0; j < good.keys.length; j++) {
+    if (j === i) continue;
+    const vx = good.pos[j * 2] - x, vy = good.pos[j * 2 + 1] - y;
+    const along = vx * dx + vy * dy;
+    if (along <= 1) continue;
+    const score = along + 2 * Math.abs(vx * dy - vy * dx);
+    if (score < bestScore) { bestScore = score; best = j; }
+  }
+  if (best >= 0) { select({ type: "node", id: good.keys[best] }); reveal(good.keys[best]); }
+}
+
+// ── Selection: several nodes, edges ──
+function selIds() {
+  return sel?.type === "node" ? [sel.id] : sel?.type === "nodes" ? sel.ids : [];
+}
+function toggleSelect(id) {
+  const ids = new Set(selIds());
+  if (ids.has(id)) ids.delete(id); else ids.add(id);
+  const a = [...ids];
+  select(a.length === 0 ? null : a.length === 1 ? { type: "node", id: a[0] } : { type: "nodes", ids: a });
+}
+function edgeOfEl(el) {
+  return { type: "edge", from: el.dataset.edgeFrom, to: el.dataset.edgeTo, nth: +el.dataset.edgeNth };
+}
+function edgeHitEl(e) {
+  return stage.querySelector(`.edge-hit[data-edge-from="${CSS.escape(e.from)}"][data-edge-to="${CSS.escape(e.to)}"][data-edge-nth="${e.nth}"]`);
+}
+// Midpoint of an edge, in #view px.
+function edgeMid(e) {
+  const p = edgeHitEl(e);
+  if (!p) return null;
+  const pt = p.getPointAtLength(p.getTotalLength() / 2);
+  const m = p.getScreenCTM();
+  const vr = view.getBoundingClientRect();
+  return [pt.x * m.a + pt.y * m.c + m.e - vr.left, pt.x * m.b + pt.y * m.d + m.f - vr.top];
+}
+function unionRect(ids) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const id of ids) {
+    const r = nodeRect(id);
+    if (!r) continue;
+    x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h);
+  }
+  return x0 < Infinity ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+}
+
+// `var`: updateOverlay() can run (from applyCam) before this block.
+var edgeTools = document.getElementById("edge-tools");
+var multiTools = document.getElementById("multi-tools");
+var multiBoxes = document.getElementById("multi-boxes");
+// Parsing the source on every pan frame is wasteful: remember per source.
+var toolsMemo = { src: null };
+function memo(key, fn) {
+  if (toolsMemo.src !== good.src) toolsMemo = { src: good.src };
+  if (!(key in toolsMemo)) toolsMemo[key] = fn();
+  return toolsMemo[key];
+}
+
+function placeSelectionTools() {
+  const busy = drag || pan || link || pinch;
+  const on = editActive() && !busy;
+  // Edge toolbar, above the edge's midpoint.
+  const em = on && sel?.type === "edge" && !renaming ? edgeMid(sel) : null;
+  edgeTools.classList.toggle("show", !!em);
+  if (em) {
+    const kind = memo(`op:${sel.from}>${sel.to}#${sel.nth}`, () => fe.edgeOp(good.src, sel.from, sel.to, sel.nth)?.kind);
+    for (const b of edgeTools.querySelectorAll("[data-kind]")) b.setAttribute("aria-pressed", String(b.dataset.kind === kind));
+    Object.assign(edgeTools.style, { left: em[0] + "px", top: Math.max(4, em[1] - 48) + "px" });
+  }
+  // Several nodes: a box each and one toolbar over them all.
+  const ids = editActive() && sel?.type === "nodes" ? sel.ids : [];
+  multiBoxes.replaceChildren(...ids.map((id) => {
+    const r = nodeRect(id);
+    const d = document.createElement("div");
+    if (r) Object.assign(d.style, { left: r.x - 4 + "px", top: r.y - 4 + "px", width: r.w + 8 + "px", height: r.h + 8 + "px" });
+    return d;
+  }));
+  const u = on && ids.length && !renaming ? unionRect(ids) : null;
+  multiTools.classList.toggle("show", !!u);
+  if (u) {
+    multiTools.querySelector(".count").textContent = ids.length + " selected";
+    const homes = memo("member", () => fe.subgraphs(good.src).member);
+    const h = new Set(ids.map((id) => homes.get(id) ?? null));
+    multiTools.querySelector('[data-act="ungroup"]').hidden = !(h.size === 1 && !h.has(null));
+    const above = u.y - 48 >= 4;
+    Object.assign(multiTools.style, { left: u.x + u.w / 2 + "px", top: (above ? u.y - 48 : u.y + u.h + 12) + "px" });
+  }
+  if (paletteFor) placePalette();
+}
+
+for (const bar of [edgeTools, multiTools]) {
+  bar.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); });
+  bar.addEventListener("dblclick", (e) => e.stopPropagation());
+}
+edgeTools.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b || sel?.type !== "edge") return;
+  const { from, to, nth } = sel;
+  if (b.dataset.kind) applySource((src) => fe.setEdgeKind(src, from, to, nth, b.dataset.kind));
+  else if (b.dataset.act === "label") startEdgeLabel(sel);
+  else if (b.dataset.act === "delete") deleteSelection();
+  else if (b.dataset.act === "reverse" && applySource((src) => fe.reverseEdge(src, from, to, nth))) {
+    // Keep it selected when the reversed pair is unambiguous.
+    const n = fe.edgeList(editor.value).filter(([a, c]) => a === to && c === from).length;
+    select(n === 1 ? { type: "edge", from: to, to: from, nth: 0 } : null);
+  }
+});
+multiTools.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b || sel?.type !== "nodes") return;
+  if (b.dataset.act === "group") groupSelection();
+  else if (b.dataset.act === "ungroup") {
+    const home = fe.subgraphs(editor.value).member.get(sel.ids[0]);
+    if (home) applySource((src) => fe.ungroup(src, home));
+  } else if (b.dataset.act === "color") togglePalette(sel.ids, b);
+  else if (b.dataset.act === "delete") deleteSelection();
+});
+
+function groupSelection() {
+  const ids = selIds();
+  if (!ids.length) return;
+  const gid = fe.freshId(editor.value, good.keys, "G");
+  let err = null;
+  const ok = applySource((src) => {
+    try { return fe.groupNodes(src, ids, gid, "Group"); } catch (x) { err = x.message; return src; }
+  });
+  if (err) { errBox.textContent = err; errBox.style.display = "block"; return; }
+  if (ok) startGroupTitle(gid, ids);
+}
+
+// ── Colour palette ──
+const PALETTE = [
+  ["Default", null, null],
+  ["Blue", "#e7f0ff", "#3b6fd8"], ["Green", "#e5f5ea", "#2f9e44"], ["Yellow", "#fff3bf", "#f08c00"],
+  ["Orange", "#ffe8cc", "#e8590c"], ["Red", "#ffe3e3", "#e03131"], ["Pink", "#ffdeeb", "#d6336c"],
+  ["Purple", "#f3e8ff", "#8839ef"], ["Teal", "#e3fafc", "#1098ad"], ["Grey", "#f1f3f5", "#868e96"],
+];
+const palette = document.getElementById("palette");
+var paletteFor = null; // { ids, anchor }
+palette.replaceChildren(...PALETTE.map(([name, fill, stroke], i) => {
+  const b = document.createElement("button");
+  b.dataset.i = i;
+  b.title = name;
+  b.setAttribute("role", "menuitem");
+  if (fill) Object.assign(b.style, { background: fill, borderColor: stroke });
+  return b;
+}));
+palette.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); });
+palette.addEventListener("dblclick", (e) => e.stopPropagation());
+palette.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b || !paletteFor) return;
+  const [, fill, stroke] = PALETTE[+b.dataset.i];
+  const ids = paletteFor.ids;
+  closePalette();
+  applySource((src) => fe.setNodeStyle(src, ids, fill ? { fill, stroke } : null));
+});
+function togglePalette(ids, anchor) {
+  if (paletteFor?.anchor === anchor) { closePalette(); return; }
+  paletteFor = { ids, anchor };
+  palette.classList.add("show");
+  placePalette();
+}
+function placePalette() {
+  const a = paletteFor.anchor;
+  if (!a.offsetParent) { closePalette(); return; }
+  const vr = view.getBoundingClientRect(), r = a.getBoundingClientRect();
+  const w = palette.offsetWidth, h = palette.offsetHeight;
+  let left = r.left - vr.left + r.width / 2 - w / 2;
+  left = Math.max(4, Math.min(vr.width - w - 4, left));
+  let top = r.bottom - vr.top + 8;
+  if (top + h > vr.height - 4) top = r.top - vr.top - h - 8;
+  Object.assign(palette.style, { left: left + "px", top: top + "px" });
+}
+function closePalette() {
+  if (!paletteFor) return;
+  paletteFor = null;
+  palette.classList.remove("show");
+  updateOverlay();
+}
+// Any press elsewhere closes the palette.
+document.addEventListener("pointerdown", (e) => {
+  if (paletteFor && !e.target.closest?.("#palette, [data-act=color]")) closePalette();
+}, true);
+
 linkHandle.addEventListener("pointerdown", (ev) => {
   if (!sel || sel.type !== "node") return;
   activePtrs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
@@ -1550,28 +1871,60 @@ linkHandle.addEventListener("pointerdown", (ev) => {
 });
 
 // ── Inline rename ──
-var renaming = null; // { id }
-function startRename(id) {
+// One inline box for node labels ({ id }), edge labels ({ edge }) and
+// group titles ({ group, ids }).
+var renaming = null;
+function openRename(state, value, placeholder) {
   if (!canEdit()) return;
-  renaming = { id };
-  renameInput.value = fe.nodeLabel(editor.value, id);
+  closePalette();
+  renaming = state;
+  renameInput.value = value;
+  renameInput.placeholder = placeholder;
   renameInput.hidden = false;
   placeRename();
   renameInput.focus({ preventScroll: true });
   renameInput.select();
 }
+function startRename(id) { openRename({ id }, fe.nodeLabel(editor.value, id), "Label"); }
+function startEdgeLabel(e) {
+  openRename({ edge: { from: e.from, to: e.to, nth: e.nth } },
+    fe.edgeOp(editor.value, e.from, e.to, e.nth)?.label ?? "", "Edge label (empty = none)");
+}
+function startGroupTitle(gid, ids) {
+  const b = fe.subgraphs(editor.value).blocks.find((x) => x.id === gid);
+  openRename({ group: gid, ids }, b?.title ?? "Group", "Group title");
+}
 function placeRename() {
-  const r = renaming && nodeRect(renaming.id);
-  if (!r) return;
-  const w = Math.max(r.w + 24, 150);
-  Object.assign(renameInput.style, { left: r.cx - w / 2 + "px", top: r.cy - 17 + "px", width: w + "px" });
+  if (!renaming) return;
+  let cx, cy, w = 150;
+  if (renaming.id) {
+    const r = nodeRect(renaming.id);
+    if (!r) return;
+    cx = r.cx; cy = r.cy; w = Math.max(r.w + 24, 150);
+  } else if (renaming.edge) {
+    const m = edgeMid(renaming.edge);
+    if (!m) return;
+    [cx, cy] = m; w = 170;
+  } else {
+    const r = unionRect(renaming.ids);
+    if (!r) return;
+    cx = r.x + r.w / 2; cy = r.y - 30; w = Math.max(170, Math.min(r.w, 260));
+  }
+  Object.assign(renameInput.style, { left: cx - w / 2 + "px", top: cy - 17 + "px", width: w + "px" });
 }
 function commitRename() {
   if (!renaming) return;
-  const { id } = renaming;
+  const r = renaming;
   const label = renameInput.value.trim();
   cancelRename();
-  if (label) applySource((src) => label === fe.nodeLabel(src, id) ? src : fe.renameNode(src, id, label));
+  if (r.id) {
+    if (label) applySource((src) => label === fe.nodeLabel(src, r.id) ? src : fe.renameNode(src, r.id, label));
+  } else if (r.edge) {
+    const { from, to, nth } = r.edge;
+    applySource((src) => (fe.edgeOp(src, from, to, nth)?.label ?? "") === label ? src : fe.setEdgeLabel(src, from, to, nth, label));
+  } else if (label) {
+    applySource((src) => fe.renameGroup(src, r.group, label));
+  }
 }
 function cancelRename() {
   renaming = null;
@@ -1595,15 +1948,32 @@ editBar.addEventListener("pointerdown", (e) => e.stopPropagation());
 editAdd.addEventListener("click", () => addNodeAt());
 editDel.addEventListener("click", deleteSelection);
 
+// Keyboard, mind-map style: Tab adds a child, Enter a sibling, F2
+// renames, arrows walk the nodes, Ctrl/⌘+G groups the selection.
 document.addEventListener("keydown", (e) => {
-  if (!editActive() || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (!editActive() || e.altKey) return;
   if (e.target.closest?.("textarea, input, .dd")) return;
-  if ((e.key === "Delete" || e.key === "Backspace") && sel) { e.preventDefault(); deleteSelection(); }
-  else if (e.key === "Escape" && sel) select(null);
-  else if ((e.key === "Enter" || e.key === "F2") && sel?.type === "node" && !e.target.closest?.("button")) { e.preventDefault(); startRename(sel.id); }
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === "g" && selIds().length) { e.preventDefault(); groupSelection(); return; }
+  if (mod) return;
+  if (e.key === "Escape") { if (paletteFor) closePalette(); else if (sel) select(null); return; }
+  if (!sel) return;
+  if (e.target.closest?.("button") && (e.key === "Enter" || e.key === " ")) return;
+  const one = sel.type === "node" ? sel.id : null;
+  const dirs = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+  if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); deleteSelection(); }
+  else if (e.key === "Tab" && one) { e.preventDefault(); addNext(one); }
+  else if (e.key === "Enter") {
+    e.preventDefault();
+    if (one) addSibling(one); else if (sel.type === "edge") startEdgeLabel(sel);
+  } else if (e.key === "F2") {
+    e.preventDefault();
+    if (one) startRename(one); else if (sel.type === "edge") startEdgeLabel(sel);
+  } else if (dirs[e.key] && one) { e.preventDefault(); walk(one, dirs[e.key]); }
 });
 
-try { editMode = localStorage.getItem("edit") === "on"; } catch {}
+// Edit mode is on unless the viewer switched it off.
+try { editMode = localStorage.getItem("edit") !== "off"; } catch { editMode = true; }
 
 // ── Zoom toolbar ──
 document.getElementById("zoombar").addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -1618,7 +1988,7 @@ document.getElementById("zoom-out").addEventListener("click", () => {
 document.getElementById("zoom-fit").addEventListener("click", () => fitView());
 document.getElementById("zoom-pct").addEventListener("click", () => fitView(1));
 view.addEventListener("dblclick", (e) => {
-  if (e.target.closest?.("#edit-bar, #rename, #zoombar, #link-handle")) return;
+  if (e.target.closest?.("#edit-bar, #rename, #zoombar, #link-handle, .tools, #palette")) return;
   // Pointer capture during a link gesture retargets the click to #view,
   // so test the handle by position too.
   if (linkHandle.style.display === "block") {
@@ -1627,8 +1997,10 @@ view.addEventListener("dblclick", (e) => {
   }
   const i = hitNode(e);
   if (editActive()) {
+    const ed = i < 0 && e.target.closest?.("[data-edge-from]");
     if (i >= 0) startRename(good.keys[i]);
-    else if (!e.target.closest?.("[data-edge-from]")) addNodeAt(e.clientX, e.clientY);
+    else if (ed) startEdgeLabel(edgeOfEl(ed));
+    else addNodeAt(e.clientX, e.clientY);
     return;
   }
   if (i < 0) fitView();

@@ -151,7 +151,7 @@ function splitSegments(s, start, end) {
 /** Parse a flowchart source into lines and segments with offsets. */
 export function parseFlow(src) {
   const lines = [];
-  let off = 0, front = false, sawHeader = false;
+  let off = 0, front = false, sawHeader = false, depth = 0;
   const raw = src.split("\n");
   for (let n = 0; n < raw.length; n++) {
     const text = raw[n];
@@ -173,12 +173,14 @@ export function parseFlow(src) {
     } else
     if (head && OPAQUE_HEADS.has(head) && !/^[\w-]+\s*(?:&|-|=|~|<|[xo]-)/.test(t)) {
       line.head = head;
+      if (head === "subgraph") depth++;
+      else if (head === "end" && depth) depth--;
       continue;
     }
     for (const [a, b] of segs) {
       if (src.slice(a, b).trim() === "") continue;
       const stmt = parseStatement(src, a, b);
-      if (stmt) line.segs.push({ start: a, end: b, stmt });
+      if (stmt) line.segs.push({ start: a, end: b, stmt, inGroup: depth > 0 });
     }
   }
   return { src, lines };
@@ -289,10 +291,10 @@ function appendLines(src, doc, stmts) {
 }
 
 /** An id not used anywhere in the source (`N1`, `N2`, …). */
-export function freshId(src, taken = []) {
+export function freshId(src, taken = [], prefix = "N") {
   const used = new Set(taken);
   for (const m of src.matchAll(/[\p{L}\p{N}_]+/gu)) used.add(m[0]);
-  for (let n = 1; ; n++) if (!used.has("N" + n)) return "N" + n;
+  for (let n = 1; ; n++) if (!used.has(prefix + n)) return prefix + n;
 }
 
 export function addNode(src, id, label) {
@@ -369,7 +371,8 @@ function rewrite(doc, changes /* Map seg -> string[] */) {
 }
 
 function finishPieces(doc, seg, pieces) {
-  const outside = idsOutside(doc, seg);
+  // Inside a subgraph a lone `A` is what puts A in the group: keep it.
+  const outside = seg.inGroup ? new Set() : idsOutside(doc, seg);
   const emitted = new Set();
   const kept = [];
   for (const p of pieces) {
@@ -421,7 +424,23 @@ export function deleteNode(src, id) {
     if (ids.length === list.split(",").length) return all;
     return ids.length ? pre + ids.join(",") + rest : "\u0000";
   });
-  return out.replace(/^\u0000(?:\n|$)/gm, "").replace(/\n\u0000$/, "");
+  out = out.replace(/^\u0000(?:\n|$)/gm, "").replace(/\n\u0000$/, "");
+  return dropEmptyGroups(out);
+}
+
+// Remove subgraph blocks left with nothing inside (innermost first).
+function dropEmptyGroups(src) {
+  for (;;) {
+    const { blocks } = subgraphs(src);
+    const lines = src.split("\n");
+    // A group that edges point at is a node of its own: keep that.
+    const used = new Set([...allRefs(parseFlow(src))].map((r) => r.id));
+    const empty = blocks.find((b) => b.endLine > b.line && !used.has(b.id) &&
+      lines.slice(b.line + 1, b.endLine).every((l) => !l.trim() || l.trim().startsWith("%%")));
+    if (!empty) return src;
+    lines.splice(empty.line, empty.endLine - empty.line + 1);
+    src = lines.join("\n");
+  }
 }
 
 /** Delete the `nth` (0-based) edge from → to, in source order. */
@@ -449,4 +468,250 @@ export function deleteEdge(src, from, to, nth = 0) {
     }
   }
   return src;
+}
+
+// ── Edges: label, line style, direction ──
+
+/** Split an edge operator (`-->|x|`, `-- x -->`, `-.->`, `<==>`, …). */
+export function parseOp(raw) {
+  raw = raw.trim();
+  let arrow = raw, label = null;
+  const pipe = raw.match(/^(.*?)\s*\|([^|]*)\|$/);
+  if (pipe) { arrow = pipe[1]; label = pipe[2]; }
+  else {
+    const t = raw.match(/^([<xo]?)(--|==|-\.)\s+(.*?)\s+(-{2,}[>xo]?|={2,}[>xo]?|\.-+[>xo]?)$/);
+    if (t) { arrow = t[1] + t[2] + t[4]; label = t[3]; }
+  }
+  const kind = arrow.includes("~") ? "invisible" : arrow.includes("=") ? "thick" : arrow.includes(".") ? "dotted" : "solid";
+  const start = /^[<xo](?=[-=.~])/.test(arrow) ? arrow[0] : "";
+  const end = /[>xo]$/.test(arrow) && arrow.length > 1 ? arrow.at(-1) : "";
+  if (label !== null) label = unquote(label);
+  return { start: start === "<" ? "<" : start, kind, end, label };
+}
+
+/** Inverse of parseOp. */
+export function buildOp({ start = "", kind = "solid", end = ">", label = null }) {
+  const body = kind === "invisible" ? "~~~"
+    : kind === "thick" ? (end ? "==" + end : "===")
+    : kind === "dotted" ? (end ? "-.-" + end : "-.-")
+    : (end ? "--" + end : "---");
+  const arrow = kind === "invisible" ? body : (end ? start : "") + body;
+  if (label === null || label.trim() === "") return arrow;
+  const l = label.trim().replace(/\s*\n\s*/g, " ");
+  return arrow + "|" + (/[|"]/.test(l) ? '"' + l.replace(/"/g, "#quot;").replace(/\|/g, "/") + '"' : l) + "|";
+}
+
+// Locate the nth from → to edge: its statement and position.
+function findEdge(doc, from, to, nth) {
+  let count = 0, index = -1;
+  for (const line of doc.lines) for (const seg of line.segs) {
+    const { groups, ops } = seg.stmt;
+    for (let k = 0; k < ops.length; k++) {
+      for (const a of groups[k].refs) for (const b of groups[k + 1].refs) {
+        index++;
+        if (a.id === from && b.id === to && count++ === nth) return { seg, k, a, b, index };
+      }
+    }
+  }
+  return null;
+}
+
+/** The parsed operator of the nth from → to edge, or null. */
+export function edgeOp(src, from, to, nth = 0) {
+  const hit = findEdge(parseFlow(src), from, to, nth);
+  return hit ? parseOp(hit.seg.stmt.ops[hit.k].raw) : null;
+}
+
+// Rewrite one edge. `mutate(op)` returns the new parsed op; `swap`
+// reverses it. A plain `A --> B` statement is edited in place; an edge
+// that shares its operator with others (chains, `&`) is split out.
+function editEdge(src, from, to, nth, mutate, swap = false) {
+  const doc = parseFlow(src);
+  const hit = findEdge(doc, from, to, nth);
+  if (!hit) return src;
+  const { seg, k, a, b } = hit;
+  const { groups, ops } = seg.stmt;
+  const op = ops[k];
+  const next = buildOp(mutate(parseOp(op.raw)));
+  const single = groups[k].refs.length === 1 && groups[k + 1].refs.length === 1;
+  if (single && (!swap || ops.length === 1)) {
+    const edits = [[op.start, op.end, next]];
+    if (swap) {
+      edits.push([a.start, a.end, b.raw], [b.start, b.end, a.raw]);
+      // Keep the spacing that sat around the operator.
+    }
+    return splice(src, edits);
+  }
+  const gs = groups.map((g) => g.refs);
+  const left = { groups: gs.slice(0, k + 1), ops: ops.slice(0, k) };
+  const right = { groups: gs.slice(k + 1), ops: ops.slice(k + 1) };
+  const pieces = [left];
+  for (const x of gs[k]) for (const y of gs[k + 1]) {
+    if (x === a && y === b) {
+      const [p, q] = swap ? [y, x] : [x, y];
+      pieces.push({ groups: [[p], [q]], ops: [op], text: `${p.id} ${next} ${q.id}` });
+    } else {
+      pieces.push({ groups: [[x], [y]], ops: [op], text: `${x.id} ${op.raw.trim()} ${y.id}` });
+    }
+  }
+  pieces.push(right);
+  return rewrite(doc, new Map([[seg, finishPieces(doc, seg, pieces)]]));
+}
+
+export function setEdgeLabel(src, from, to, nth, label) {
+  return editEdge(src, from, to, nth, (o) => ({ ...o, label }));
+}
+
+/** kind: "solid" | "dotted" | "thick". */
+export function setEdgeKind(src, from, to, nth, kind) {
+  return editEdge(src, from, to, nth, (o) => ({ ...o, kind }));
+}
+
+export function reverseEdge(src, from, to, nth) {
+  return editEdge(src, from, to, nth, (o) => o, true);
+}
+
+// ── Node colours (`style` lines) ──
+
+/**
+ * Set (merge) style props on nodes: `props` like { fill, stroke, color }.
+ * A prop set to null is removed; `props` null clears fill/stroke/color.
+ * Each node ends with at most one `style` line, where its first was.
+ */
+export function setNodeStyle(src, ids, props) {
+  let lines = src.split("\n");
+  for (const id of ids) {
+    const esc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`^([ \\t]*)style[ \\t]+${esc}[ \\t]+(.*)$`, "u");
+    const map = new Map();
+    let at = -1, indent = null;
+    lines = lines.filter((l, n) => {
+      const m = l.match(re);
+      if (!m) return true;
+      if (at < 0) { at = n; indent = m[1]; }
+      for (const kv of m[2].replace(/;\s*$/, "").split(",")) {
+        const i = kv.indexOf(":");
+        if (i > 0) map.set(kv.slice(0, i).trim(), kv.slice(i + 1).trim());
+      }
+      return false;
+    });
+    const set = props ?? { fill: null, stroke: null, color: null };
+    for (const [k, v] of Object.entries(set)) {
+      if (v === null || v === undefined) map.delete(k); else map.set(k, v);
+    }
+    if (!map.size) continue;
+    const doc = parseFlow(lines.join("\n"));
+    const line = `style ${id} ` + [...map].map(([k, v]) => `${k}:${v}`).join(",");
+    if (at >= 0) lines.splice(Math.min(at, lines.length), 0, indent + line);
+    else lines = appendLines(lines.join("\n"), doc, [line]).split("\n");
+  }
+  return lines.join("\n");
+}
+
+/** Current fill of a node from its `style` lines (last one wins), or null. */
+export function nodeFill(src, id) {
+  const esc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let fill = null;
+  for (const m of src.matchAll(new RegExp(`^[ \\t]*style[ \\t]+${esc}[ \\t]+(.*)$`, "gmu"))) {
+    const f = m[1].match(/(?:^|,)\s*fill\s*:\s*([^,;]+)/);
+    if (f) fill = f[1].trim();
+  }
+  return fill;
+}
+
+// ── Subgraphs ──
+
+/** Subgraph blocks ({ id, title, line, endLine, depth, parent }) and node membership. */
+export function subgraphs(src) {
+  const doc = parseFlow(src);
+  const blocks = [], stack = [], member = new Map();
+  for (const line of doc.lines) {
+    if (line.head === "subgraph") {
+      const rest = line.text.trim().slice("subgraph".length).trim();
+      const id = rest.match(/^[\p{L}\p{N}_]+/u)?.[0] ?? `#${line.n}`;
+      const title = rest.match(/\[(.*)\]\s*$/)?.[1] ?? rest;
+      const b = { id, title: unquote(title), line: line.n, endLine: -1, depth: stack.length, parent: stack.at(-1)?.id ?? null };
+      blocks.push(b);
+      stack.push(b);
+      continue;
+    }
+    if (line.head === "end" && stack.length) { stack.pop().endLine = line.n; continue; }
+    if (!stack.length) continue;
+    // The engine keeps a node in the first subgraph that mentions it.
+    for (const seg of line.segs) for (const g of seg.stmt.groups) for (const r of g.refs) {
+      if (!member.has(r.id)) member.set(r.id, stack.at(-1).id);
+    }
+  }
+  return { blocks, member };
+}
+
+/**
+ * Wrap nodes in a new `subgraph gid [title]`. Nodes already in one
+ * subgraph get a nested group inside it; nodes spread over different
+ * subgraphs throw, since the engine would keep them where they are.
+ */
+export function groupNodes(src, ids, gid, title) {
+  const { blocks, member } = subgraphs(src);
+  const homes = new Set(ids.map((id) => member.get(id) ?? null));
+  if (homes.size > 1) throw new Error("These nodes are in different groups — ungroup them first.");
+  const home = [...homes][0];
+  const lines = src.split("\n");
+  const doc = parseFlow(src);
+  const base = stmtIndent(doc);
+  const t = formatLabel(title);
+  if (home === null) {
+    const block = [`subgraph ${gid} [${t}]`, ...ids.map((id) => base + id), "end"];
+    return appendLines(src, doc, block);
+  }
+  const b = blocks.find((x) => x.id === home);
+  const ind = lines[b.endLine].match(/^[ \t]*/)[0] + base;
+  const block = [`${ind}subgraph ${gid} [${t}]`, ...ids.map((id) => ind + base + id), `${ind}end`];
+  // Bare `A` lines of the moved nodes in the outer block are dropped;
+  // the new block goes first in it, since the first subgraph to mention
+  // a node keeps it.
+  const moved = new Set(ids);
+  for (let n = b.endLine - 1; n > b.line; n--) {
+    if (moved.has(lines[n].trim())) lines.splice(n, 1);
+  }
+  lines.splice(b.line + 1, 0, ...block);
+  return lines.join("\n");
+}
+
+/** Rename a subgraph's title. */
+export function renameGroup(src, gid, title) {
+  const { blocks } = subgraphs(src);
+  const b = blocks.find((x) => x.id === gid);
+  if (!b) return src;
+  const lines = src.split("\n");
+  const ind = lines[b.line].match(/^[ \t]*/)[0];
+  lines[b.line] = `${ind}subgraph ${gid} [${formatLabel(title)}]`;
+  return lines.join("\n");
+}
+
+/** Remove a subgraph wrapper, keeping its contents (dedented one step). */
+export function ungroup(src, gid) {
+  const { blocks } = subgraphs(src);
+  const b = blocks.find((x) => x.id === gid);
+  if (!b || b.endLine < 0) return src;
+  const lines = src.split("\n");
+  const ind = lines[b.line].match(/^[ \t]*/)[0];
+  const inner = lines.slice(b.line + 1, b.endLine);
+  // Dedent by the step the block's first line used.
+  const firstInd = inner.find((l) => l.trim())?.match(/^[ \t]*/)[0] ?? ind;
+  const step = Math.max(0, firstInd.length - ind.length);
+  const outside = lines.filter((_, n) => n < b.line || n > b.endLine).join("\n");
+  const out = inner
+    .map((l) => {
+      const lead = l.match(/^[ \t]*/)[0].length;
+      return l.slice(Math.min(step, Math.max(0, lead - ind.length)));
+    })
+    // Bare `A` lines only placed a node in the group; drop them when the
+    // node is declared elsewhere anyway.
+    .filter((l) => {
+      const id = l.trim();
+      if (!/^[\p{L}\p{N}_]+$/u.test(id)) return true;
+      return !new RegExp(`(^|[^\\p{L}\\p{N}_])${id}(?![\\p{L}\\p{N}_])`, "u").test(outside);
+    });
+  lines.splice(b.line, b.endLine - b.line + 1, ...out);
+  return lines.join("\n");
 }
