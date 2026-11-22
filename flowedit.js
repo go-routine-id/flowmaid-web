@@ -186,8 +186,8 @@ export function parseFlow(src) {
   return { src, lines };
 }
 
-/** True for `flowchart …` / `graph …` sources (after comments / front matter). */
-export function isFlowchart(src) {
+/** The document's first real statement: front matter and comments skipped. */
+function firstStatement(src) {
   let front = false;
   const lines = src.split("\n");
   for (let n = 0; n < lines.length; n++) {
@@ -195,10 +195,52 @@ export function isFlowchart(src) {
     if (n === 0 && t === "---") { front = true; continue; }
     if (front) { if (t === "---") front = false; continue; }
     if (t === "" || t.startsWith("%%")) continue;
-    return /^(?:flowchart|graph)\b/.test(t);
+    return t;
   }
-  return false;
+  return "";
 }
+
+/** True for `flowchart …` / `graph …` sources (after comments / front matter). */
+export function isFlowchart(src) {
+  return /^(?:flowchart|graph)\b/.test(firstStatement(src));
+}
+
+// The engine's diagram headers, in its own order so the longer spelling
+// wins: `stateDiagram-v2` before `stateDiagram`, `sankey-beta` before
+// `sankey`. A header the engine does not recognise leaves the document a
+// flowchart, which is how the engine reads it too.
+// TODO: copied by hand from the engine's header table, so a new diagram
+// type there needs a line here. The type belongs in something the engine
+// reports (see the type-aware editing request on its tracker); until then
+// this is the only place the web decides a document's type for itself.
+const DOC_HEADERS = [
+  ["erDiagram", "er"], ["classDiagram", "class"], ["sequenceDiagram", "sequence"],
+  ["pie", "pie"], ["stateDiagram-v2", "state"], ["stateDiagram", "state"],
+  ["mindmap", "mindmap"], ["journey", "journey"], ["gitGraph", "gitgraph"],
+  ["architecture-beta", "architecture"], ["architecture", "architecture"],
+  ["timeline", "timeline"], ["sankey-beta", "sankey"], ["sankey", "sankey"],
+];
+
+/** The document's diagram type: `flowchart`, `class`, `er`, `state`, … */
+export function docKind(src) {
+  const line = firstStatement(src);
+  for (const [head, kind] of DOC_HEADERS) {
+    if (!line.startsWith(head)) continue;
+    // A header ends at whitespace or end of line (and `gitGraph:` counts),
+    // so `pie` matches but `pieces` does not.
+    const next = line[head.length];
+    if (next === undefined || /\s/.test(next) || (head === "gitGraph" && next === ":")) return kind;
+  }
+  return "flowchart";
+}
+
+/** What each type is called in the interface. */
+export const KIND_LABEL = {
+  flowchart: "flowchart", state: "state diagram", class: "class diagram",
+  er: "ER diagram", sequence: "sequence diagram", pie: "pie chart",
+  mindmap: "mind map", journey: "user journey", gitgraph: "git graph",
+  architecture: "architecture diagram", timeline: "timeline", sankey: "sankey diagram",
+};
 
 function* allRefs(doc) {
   for (const line of doc.lines) for (const seg of line.segs) for (const g of seg.stmt.groups) for (const r of g.refs) yield r;
@@ -290,6 +332,30 @@ function appendLines(src, doc, stmts) {
   return body + stmts.map((s) => "\n" + indent + s).join("") + (trail.includes("\n") ? trail.slice(trail.indexOf("\n")) : "");
 }
 
+/**
+ * Append statement lines to a document that is not a flowchart, indented
+ * like its own body. `appendLines` reaches its indent through `parseFlow`,
+ * which only ever sees a flowchart's statements.
+ */
+function appendPlain(src, stmts) {
+  let indent = "    ";
+  const raw = src.split("\n");
+  let front = false, sawHeader = false;
+  for (let n = 0; n < raw.length; n++) {
+    const t = raw[n].trim();
+    if (n === 0 && t === "---") { front = true; continue; }
+    if (front) { if (t === "---") front = false; continue; }
+    if (t === "" || t.startsWith("%%")) continue;
+    if (!sawHeader) { sawHeader = true; continue; }
+    // The first statement under the header sets the body's indent.
+    indent = raw[n].match(/^[ \t]*/)[0];
+    break;
+  }
+  const body = src.replace(/\s+$/, "");
+  const trail = src.slice(body.length);
+  return body + stmts.map((s) => "\n" + indent + s).join("") + (trail.includes("\n") ? trail.slice(trail.indexOf("\n")) : "");
+}
+
 /** An id not used anywhere in the source (`N1`, `N2`, …). */
 export function freshId(src, taken = [], prefix = "N") {
   const used = new Set(taken);
@@ -297,12 +363,122 @@ export function freshId(src, taken = [], prefix = "N") {
   for (let n = 1; ; n++) if (!used.has(prefix + n)) return prefix + n;
 }
 
-export function addNode(src, id, label) {
-  return appendLines(src, parseFlow(src), [id + "[" + formatLabel(label) + "]"]);
+// The node shapes the engine draws differently from one another —
+// measured through the wasm bundle, not read off the grammar: `>x]` comes
+// out byte-identical to `[x]`, `[/x\]` to `[/x/]` and `[\x/]` to `[\x\]`,
+// so only one of each pair is offered. Two menu entries that draw the
+// same picture are not a choice.
+// TODO: this is the web's own copy of the vocabulary. The catalogue
+// belongs to the engine (see the type-aware editing request on its
+// tracker); until it reports one, a shape added there needs a line here.
+// Each list holds what the engine draws differently from the others in
+// a document of that type — measured through the wasm bundle, not read
+// off the grammar. A state diagram's `<<join>>` comes out byte-identical
+// to its `<<fork>>`, so the pair is offered once; `namespace` (class) and
+// a state diagram's `--` are left out because the parser rejects them.
+export const NODE_KINDS = {
+  flowchart: [
+    { key: "rect", name: "Rectangle", prefix: "N", open: "[", close: "]" },
+    { key: "rounded", name: "Rounded", prefix: "N", open: "(", close: ")" },
+    { key: "stadium", name: "Stadium", prefix: "N", open: "([", close: "])" },
+    { key: "subroutine", name: "Subroutine", prefix: "N", open: "[[", close: "]]" },
+    { key: "cylinder", name: "Database", prefix: "N", open: "[(", close: ")]" },
+    { key: "circle", name: "Circle", prefix: "N", open: "((", close: "))" },
+    { key: "double", name: "Double circle", prefix: "N", open: "(((", close: ")))" },
+    { key: "diamond", name: "Decision", prefix: "N", open: "{", close: "}" },
+    { key: "hexagon", name: "Hexagon", prefix: "N", open: "{{", close: "}}" },
+    { key: "lean-r", name: "Parallelogram", prefix: "N", open: "[/", close: "/]" },
+    { key: "lean-l", name: "Parallelogram, mirrored", prefix: "N", open: "[\\", close: "\\]" },
+  ],
+  class: [
+    { key: "class", name: "Class", prefix: "Class" },
+    { key: "members", name: "Class with members", prefix: "Class" },
+    { key: "interface", name: "Interface", prefix: "Interface" },
+    { key: "abstract", name: "Abstract class", prefix: "Abstract" },
+    { key: "enum", name: "Enumeration", prefix: "Enum" },
+  ],
+  er: [
+    { key: "entity", name: "Entity", prefix: "ENTITY" },
+    { key: "attr", name: "Entity with an attribute", prefix: "ENTITY" },
+    { key: "key", name: "Entity with a key", prefix: "ENTITY" },
+  ],
+  state: [
+    { key: "state", name: "State", prefix: "State" },
+    { key: "choice", name: "Choice", prefix: "Choice" },
+    { key: "fork", name: "Fork / join", prefix: "Fork" },
+  ],
+};
+
+/** The entry `key` names in a `kind` document, or that type's first. */
+export function nodeKind(kind, key) {
+  const all = NODE_KINDS[kind] ?? [];
+  return all.find((x) => x.key === key) ?? all[0] ?? null;
 }
 
-export function addEdge(src, from, to, op = "-->") {
-  return appendLines(src, parseFlow(src), [`${from} ${op} ${to}`]);
+/**
+ * True for a node key the grammar would take back as an identifier. The
+ * engine also reports keys for things the source never named — a state
+ * diagram's `__start_root`, a class note's `note-0` — and writing one of
+ * those into a statement would invent a node beside the drawn one.
+ */
+export function isWritableKey(key) {
+  return /^[\p{L}_][\p{L}\p{N}_]*$/u.test(key) && !key.startsWith("__");
+}
+
+/** A fresh id for a new node, prefixed to suit what it is. */
+export function newNodeId(src, taken, key) {
+  return freshId(src, taken, nodeKind(docKind(src), key)?.prefix ?? "N");
+}
+
+/** The lines a new node is written as, per diagram type. */
+const NEW_NODE = {
+  flowchart: (id, label, key) => [shapeText(id, label, key)],
+  class: (id, _label, key) => ({
+    members: [`class ${id} {`, "    +int id", "    +save() bool", "}"],
+    interface: [`class ${id} {`, "    <<interface>>", "}"],
+    abstract: [`class ${id} {`, "    <<abstract>>", "}"],
+    enum: [`class ${id} {`, "    <<enumeration>>", "}"],
+  })[key] ?? [`class ${id}`],
+  er: (id, _label, key) => ({
+    attr: [`${id} {`, "    string name", "}"],
+    key: [`${id} {`, "    string id PK", "}"],
+  })[key] ?? [id],
+  state: (id, _label, key) => ({
+    choice: [`state ${id} <<choice>>`],
+    fork: [`state ${id} <<fork>>`],
+  })[key] ?? [`state ${id}`],
+};
+
+/** How a new node is wired to the one it came from, per diagram type. */
+export const EDGE_OP = { flowchart: "-->", class: "-->", state: "-->", er: "||--o{" };
+
+/** A node statement: `id` wrapped in `shape`, label quoted where needed. */
+function shapeText(id, label, shape) {
+  const s = nodeKind("flowchart", shape);
+  let text = formatLabel(label);
+  // `[/a/b/]` would end at the label's own slash, so quote it instead.
+  if (text[0] !== '"' && /[/\\]/.test(s.open + s.close) && /[/\\]/.test(text)) {
+    text = '"' + text.replace(/"/g, "#quot;") + '"';
+  }
+  return id + s.open + text + s.close;
+}
+
+/**
+ * Append a new node, written in the grammar of the document it joins:
+ * `N1[New node]` on a flowchart, `class Foo` on a class diagram, a bare
+ * `FOO` on an ER one. `key` picks from that type's `NODE_KINDS`.
+ */
+export function addNode(src, id, label, key = "rect") {
+  const kind = docKind(src);
+  const lines = (NEW_NODE[kind] ?? NEW_NODE.flowchart)(id, label, key);
+  return kind === "flowchart" ? appendLines(src, parseFlow(src), lines) : appendPlain(src, lines);
+}
+
+/** Wire `from` to `to`. Without `op`, the document's own default. */
+export function addEdge(src, from, to, op = null) {
+  const kind = docKind(src);
+  const lines = [`${from} ${op ?? EDGE_OP[kind] ?? "-->"} ${to}`];
+  return kind === "flowchart" ? appendLines(src, parseFlow(src), lines) : appendPlain(src, lines);
 }
 
 // ── Rewriting chains ──

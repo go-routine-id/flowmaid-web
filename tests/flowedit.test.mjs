@@ -117,4 +117,138 @@ assert.equal(fe.ungroup(s, "G1"), S);
 assert.equal(fe.deleteNode(fe.deleteNode(s, "A"), "B").includes("subgraph"), false);
 assert.equal(fe.renameGroup(s, "G1", "In put (x)").includes('subgraph G1 ["In put (x)"]'), true);
 }
+// ── Diagram type, read the way the engine reads it ──
+{
+assert.equal(fe.docKind("flowchart TD\n  A --> B"), "flowchart");
+assert.equal(fe.docKind("graph LR\nA-->B"), "flowchart");
+assert.equal(fe.docKind("A --> B"), "flowchart");            // no header: a flowchart, as the engine has it
+assert.equal(fe.docKind("classDiagram\n  class A"), "class");
+assert.equal(fe.docKind("erDiagram\n  A ||--o{ B : x"), "er");
+assert.equal(fe.docKind("sequenceDiagram\n  A->>B: x"), "sequence");
+assert.equal(fe.docKind("stateDiagram-v2\n  [*] --> A"), "state");
+assert.equal(fe.docKind("stateDiagram\n  [*] --> A"), "state");
+assert.equal(fe.docKind("pie\n  \"a\" : 1"), "pie");
+assert.equal(fe.docKind("pie title X\n  \"a\" : 1"), "pie");
+assert.equal(fe.docKind("mindmap\n  root"), "mindmap");
+assert.equal(fe.docKind("journey\n  title X"), "journey");
+assert.equal(fe.docKind("gitGraph\n  commit"), "gitgraph");
+assert.equal(fe.docKind("gitGraph:\n  commit"), "gitgraph");  // the `gitGraph:` spelling
+assert.equal(fe.docKind("architecture-beta\n  group a"), "architecture");
+assert.equal(fe.docKind("timeline\n  title X"), "timeline");
+assert.equal(fe.docKind("sankey-beta\na,b,1"), "sankey");
+// Front matter, directives and comments are skipped, as in isFlowchart.
+assert.equal(fe.docKind("---\ntitle: x\n---\nclassDiagram\n  class A"), "class");
+assert.equal(fe.docKind("%% a note\n\nerDiagram\n  A ||--o{ B : x"), "er");
+// A header ends at whitespace or end of line: `pieces` is not `pie`.
+assert.equal(fe.docKind("pieces --> B"), "flowchart");
+assert.equal(fe.docKind("timelines[x] --> B"), "flowchart");
+// isFlowchart keeps its old answers after the refactor.
+assert.equal(fe.isFlowchart("---\ntitle: x\n---\ngraph TD\nA-->B"), true);
+assert.equal(fe.isFlowchart("classDiagram\n class A"), false);
+assert.equal(fe.isFlowchart(""), false);
+}
+
+// ── Node shapes: every one parses, and no two draw the same picture ──
+{
+const draw = (s) => m.render_routed(s, m.auto_positions(s));
+assert.equal(fe.NODE_KINDS.flowchart.length, 11);
+assert.equal(new Set(fe.NODE_KINDS.flowchart.map((s) => s.key)).size, 11);
+const seen = new Map();
+for (const s of fe.NODE_KINDS.flowchart) {
+  const src = ok(fe.addNode("flowchart TD\n    A[a]", "X", "x", s.key));
+  assert.match(src, /\n    X/, s.key);
+  assert.ok(m.node_keys(src).split("\n").includes("X"), s.key);
+  // The label survives, whatever the brackets around it.
+  assert.match(draw(src), />x</, s.key);
+  // The measured claim this vocabulary rests on: distinct geometry.
+  const art = draw(src).replace(/>x</g, "><");
+  const twin = seen.get(art);
+  assert.equal(twin, undefined, `${s.key} draws exactly what ${twin} draws`);
+  seen.set(art, s.key);
+}
+// An unknown key falls back to the plain rectangle rather than throwing.
+assert.equal(fe.addNode("flowchart TD\n    A[a]", "X", "x", "no-such-shape"),
+             fe.addNode("flowchart TD\n    A[a]", "X", "x", "rect"));
+// A label with the shape's own delimiter in it gets quoted, not broken.
+const sl = ok(fe.addNode("flowchart TD\n    A[a]", "X", "a/b", "lean-r"));
+assert.match(sl, /\n    X\[\/"a\/b"\/\]$/, sl);
+assert.match(draw(sl), />a\/b</);
+assert.match(ok(fe.addNode("flowchart TD\n    A[a]", "X", "c\\d", "lean-l")), /X\[\\"c\\d"\\\]$/);
+}
+
+// ── A node vocabulary per diagram type ──────────────────────────────
+// Every entry the picker offers must be something the engine really
+// draws, and something it draws differently from the type's other
+// entries. A menu whose items produce the same picture is not a choice.
+{
+  // `ok()` above only asks for the keys; a new statement has to render.
+  const must = (src, why) => {
+    try { return m.render_routed(src, m.auto_positions(src)); }
+    catch (e) { assert.fail(`${why}: the engine refused\n${src}\n${e}`); }
+  };
+  const BASE = {
+    class: "classDiagram\n  Base <|-- Leaf",
+    er: "erDiagram\n  BASE ||--o{ LEAF : has",
+    state: "stateDiagram-v2\n  [*] --> Base\n  Base --> Leaf",
+  };
+  const FROM = { class: "Base", er: "BASE", state: "Base" };
+
+  assert.deepEqual(Object.keys(fe.NODE_KINDS).sort(), ["class", "er", "flowchart", "state"]);
+  assert.equal(fe.NODE_KINDS.flowchart.length, 11);
+  assert.equal(fe.NODE_KINDS.class.length, 5);
+  assert.equal(fe.NODE_KINDS.er.length, 3);
+  // Three, not four: the engine draws `<<join>>` exactly as `<<fork>>`.
+  assert.equal(fe.NODE_KINDS.state.length, 3);
+
+  for (const [kind, base] of Object.entries(BASE)) {
+    const seen = new Map();
+    for (const e of fe.NODE_KINDS[kind]) {
+      const why = `${kind}/${e.key}`;
+      // One id for all of them, so the fingerprints below compare the
+      // drawing and not the name that happens to sit in it.
+      const src = fe.addNode(base, "X", "New node", e.key);
+      const svg = must(src, why);
+      assert.ok(m.node_keys(src).split("\n").includes("X"), `${why}: no key X`);
+      // Appended at the document's own indent, in its own grammar.
+      assert.match(src, /\n  \S/, why);
+      assert.doesNotMatch(src, /\n\s+X\[New node\]/, `${why}: wrote flowchart brackets`);
+      const art = svg.replace(/[-\d.]+/g, "#");
+      const twin = seen.get(art);
+      assert.equal(twin, undefined, `${why} draws exactly what ${kind}/${twin} draws`);
+      seen.set(art, e.key);
+      // The id a new node of this kind gets is named after what it is.
+      assert.ok(fe.newNodeId(base, [], e.key).startsWith(e.prefix), `${why}: prefix`);
+      // And it can be wired to what it came from, in this type's own
+      // relation, straight away.
+      must(fe.addEdge(src, FROM[kind], "X"), `${why}: edge`);
+    }
+  }
+
+  // The annotations are not decoration: the engine writes them out.
+  for (const [key, word] of [["interface", "interface"], ["abstract", "abstract"], ["enum", "enumeration"]]) {
+    const svg = must(fe.addNode(BASE.class, "X", "x", key), `class/${key}`);
+    assert.match(svg, new RegExp(word), `class/${key}: annotation missing`);
+  }
+  // An ER relation is not an arrow: the default carries cardinality.
+  assert.equal(fe.EDGE_OP.er, "||--o{");
+  assert.match(fe.addEdge(BASE.er, "BASE", "LEAF2"), /BASE \|\|--o\{ LEAF2$/);
+  assert.match(fe.addEdge(BASE.class, "Base", "Leaf2"), /Base --> Leaf2$/);
+  // An unknown key falls back to the type's first entry, not a throw.
+  assert.equal(fe.addNode(BASE.class, "X", "x", "no-such"), fe.addNode(BASE.class, "X", "x", "class"));
+
+  // Keys the engine invents for what the source never named must stay
+  // out of any statement we write.
+  const st = fe.addNode(BASE.state, "X", "x", "state");
+  const keys = m.node_keys(st).split("\n");
+  assert.ok(keys.includes("__start_root"), "the start marker is still a key");
+  for (const k of keys) {
+    assert.equal(fe.isWritableKey(k), !k.startsWith("__"), `writable? ${k}`);
+  }
+  assert.equal(fe.isWritableKey("note-0"), false);
+  assert.equal(fe.isWritableKey("1abc"), false);
+  assert.equal(fe.isWritableKey(""), false);
+  assert.equal(fe.isWritableKey("Base"), true);
+  assert.equal(fe.isWritableKey("_x2"), true);
+}
+
 console.log("ALL OK");

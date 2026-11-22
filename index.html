@@ -276,6 +276,20 @@
     border: 1px solid var(--line2); border-radius: 8px; background: var(--bg); box-shadow: 0 6px 18px rgb(0 0 0 / .18);
   }
   #palette.show { display: grid; }
+  #shapes {
+    position: absolute; display: none; pointer-events: auto; z-index: 8;
+    flex-direction: column; gap: 2px; padding: 7px;
+    border: 1px solid var(--line2); border-radius: 8px; background: var(--bg); box-shadow: 0 6px 18px rgb(0 0 0 / .18);
+  }
+  #shapes.show { display: flex; }
+  #shapes button {
+    min-width: 176px; height: 28px; padding: 0 10px 0 6px; cursor: pointer;
+    display: flex; align-items: center; gap: 9px; text-align: left; font: inherit; font-size: 12px;
+    color: var(--ink); background: var(--bg); border: 1px solid transparent; border-radius: 6px;
+  }
+  #shapes button svg { width: 22px; height: 16px; flex: none; }
+  #shapes button:hover, #shapes button:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+  #shapes button[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
   #palette button {
     width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 2px solid; cursor: pointer;
     transition: transform .08s;
@@ -605,6 +619,7 @@
         <button data-act="delete" class="danger" title="Delete selected (Delete)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M6.8 7v4M9.2 7v4"/></svg></button>
       </div>
       <div id="palette" role="menu" aria-label="Node colour"></div>
+      <div id="shapes" role="menu" aria-label="New node"></div>
     </div>
     <input id="rename" type="text" spellcheck="false" autocomplete="off" aria-label="Node label" hidden>
     <div id="doc-title"></div>
@@ -1229,13 +1244,15 @@ view.addEventListener("pointerdown", (ev) => {
   // A tap pins the toolbar (no hover on touch screens); a click just moves it.
   if (ev.pointerType === "touch" || i < 0) setHover(i >= 0 ? good.keys[i] : null, true);
   else setHover(good.keys[i]);
-  if (editActive()) {
+  if (pickActive()) {
     // Keep keys (Delete, Enter) on the canvas, not in the code panel.
     if (document.activeElement !== renameInput) view.focus({ preventScroll: true });
     // Shift+drag connects; Shift+click (no drag) and Ctrl/⌘+click add
-    // to the selection.
-    if (i >= 0 && ev.shiftKey) { startLink(good.keys[i], ev); if (link) link.shift = true; return; }
-    if (i >= 0 && (ev.ctrlKey || ev.metaKey)) { toggleSelect(good.keys[i]); ev.preventDefault(); return; }
+    // to the selection. Both end in a source edit, so both stay behind
+    // canEdit(): on a class or ER diagram a node can be picked up and
+    // moved, but not linked or multi-selected.
+    if (i >= 0 && ev.shiftKey && canEdit()) { startLink(good.keys[i], ev); if (link) link.shift = true; return; }
+    if (i >= 0 && (ev.ctrlKey || ev.metaKey) && canEdit()) { toggleSelect(good.keys[i]); ev.preventDefault(); return; }
     const edgeEl = i < 0 && ev.target.closest?.("[data-edge-from]");
     if (edgeEl) {
       select({ type: "edge", from: edgeEl.dataset.edgeFrom, to: edgeEl.dataset.edgeTo, nth: +edgeEl.dataset.edgeNth });
@@ -1289,7 +1306,7 @@ view.addEventListener("pointermove", (ev) => {
   if (!drag) {
     const h = hitNode(ev);
     view.style.cursor = h >= 0 ? (editActive() && ev.shiftKey ? "crosshair" : "grab") : "default";
-    if (ev.pointerType !== "touch" && !ev.target.closest?.(".tools, #palette")) setHover(h >= 0 ? good.keys[h] : null);
+    if (ev.pointerType !== "touch" && !ev.target.closest?.(".tools, #palette, #shapes")) setHover(h >= 0 ? good.keys[h] : null);
     return;
   }
   const s = svgScale();
@@ -1339,13 +1356,44 @@ const linkPreview = document.getElementById("link-preview");
 const renameInput = document.getElementById("rename");
 const HINT = "Tab: child · Enter: sibling · F2: rename · Shift/Ctrl+click: multi-select · Ctrl+G: group · double-click canvas: new node";
 
+// Two different capabilities, and conflating them is what kept canvas
+// editing flowchart-only:
+//   pick — the engine hands us keys, centres and sizes, so a node can be
+//          hovered, selected and dragged. True of every type `node_keys`
+//          answers for: flowchart, state, ER and class today.
+//   edit — the action has to be written back as this document's own
+//          Mermaid grammar, and flowedit.js only writes flowchart.
+function canPick() {
+  if (engine !== "flowmaid" || !good) return false;
+  // Asking the engine beats reading the header: a type it has no keys for
+  // (pie, mind map, …) drops out without being named here.
+  return good.keys.length > 0;
+}
 function canEdit() {
   if (engine !== "flowmaid" || !good) return false;
   // Called on every pan / zoom frame: classify each document once.
   good.flow ??= fe.isFlowchart(good.src) && !isAdvance(good.src);
   return good.flow;
 }
+// Memoised like `flow` above: one classification per document. Null
+// before the first document parses, which placeTools() asks for.
+function docKind() { return good ? (good.kind ??= fe.docKind(good.src)) : null; }
+// Whether a new node can be written into this document: there is a
+// catalogue of statements for its type. Flowchart goes through canEdit(),
+// which keeps the advance diagrams (flowchart-shaped, but not editable as
+// text) out even though they are classified `flowchart`.
+function canAdd() {
+  if (engine !== "flowmaid" || !good) return false;
+  if (docKind() === "flowchart") return canEdit();
+  return (fe.NODE_KINDS[docKind()] ?? []).length > 0;
+}
+// What the node toolbar may offer. Renaming, colouring and deleting still
+// rewrite flowchart grammar only, so a class / ER / state node offers the
+// one action that is written for its own type: add a connected node.
+const NODE_ACTS = ["add", "rename", "color", "delete"];
+const NODE_ACTS_BY_KIND = { state: ["add"], class: ["add"], er: ["add"] };
 function editActive() { return editMode && canEdit(); }
+function pickActive() { return editMode && canPick(); }
 
 function setEditMode(on) {
   editMode = on;
@@ -1356,14 +1404,21 @@ function setEditMode(on) {
 }
 
 function syncEditUI() {
-  const ok = canEdit();
+  const ok = canEdit(), add = canAdd();
   editBtn.setAttribute("aria-pressed", String(editMode));
   document.body.classList.toggle("editing", editMode);
-  editBar.classList.toggle("off", !ok);
+  editBar.classList.toggle("off", !add);
   editHint.textContent = ok ? HINT
     : engine !== "flowmaid" ? "Visual editing needs the flowmaid engine — press E to switch."
+    // Name the type and say what it can actually do here: adding and
+    // arranging are written for it, renaming its text is not yet.
+    : add ? `Add and arrange this ${fe.KIND_LABEL[docKind()] ?? "diagram"} — renaming, colour and delete are flowchart-only for now.`
+    : canPick() ? `Drag to arrange this ${fe.KIND_LABEL[docKind()] ?? "diagram"} — editing its text on the canvas is flowchart-only for now.`
     : "Visual editing works on flowchart / graph diagrams.";
-  editAdd.disabled = !ok;
+  editAdd.disabled = !add;
+  // Deleting a node means deleting its edges too, which is written for
+  // flowcharts only; the button stays away rather than lying.
+  editDel.hidden = !ok;
   if (sel && !selExists()) sel = null;
   editDel.disabled = !(ok && sel);
   updateOverlay();
@@ -1460,8 +1515,10 @@ function nodeRect(id) {
 }
 
 function updateOverlay() {
-  const r = editActive() && sel?.type === "node" ? nodeRect(sel.id) : null;
-  selBox.style.display = linkHandle.style.display = r ? "block" : "none";
+  const r = pickActive() && sel?.type === "node" ? nodeRect(sel.id) : null;
+  selBox.style.display = r ? "block" : "none";
+  // The handle drags out a new edge, which is a source edit.
+  linkHandle.style.display = r && canEdit() ? "block" : "none";
   if (r) {
     Object.assign(selBox.style, { left: r.x - 4 + "px", top: r.y - 4 + "px", width: r.w + 8 + "px", height: r.h + 8 + "px" });
     Object.assign(linkHandle.style, { left: r.x + r.w + 14 + "px", top: r.cy + "px" });
@@ -1513,33 +1570,40 @@ function applySource(edit) {
 }
 
 // Add a node (optionally wired from `from`) at a client point.
-function addNodeAt(clientX, clientY, from = null) {
-  if (!canEdit()) return;
+function addNodeAt(clientX, clientY, from = null, kind = null) {
+  if (!canAdd()) return;
   if (clientX === undefined) {
     const vr = view.getBoundingClientRect();
-    // Nudge repeated "+ Node" presses so new nodes don't stack.
-    const k = (good.keys.filter((x) => /^N\d+$/.test(x)).length % 5) * 24;
+    // Nudge repeated "+ Node" presses so new nodes don't stack. Counted
+    // per prefix, so `Class3` is the third class, not the third node.
+    const pre = fe.nodeKind(docKind(), kind ?? pickedKind())?.prefix ?? "N";
+    const re = new RegExp(`^${pre}\\d+$`);
+    const k = (good.keys.filter((x) => re.test(x)).length % 5) * 24;
     clientX = vr.left + vr.width / 2 + k;
     clientY = vr.top + vr.height / 2 + k;
   }
   let p = clientToLayout(clientX, clientY);
   // "+ Node" lands on the nearest free spot instead of on top of a node.
   if (p && !from) p = freeSpot(p);
-  addNodeAtLayout(p, from);
+  addNodeAtLayout(p, from, kind);
 }
 
-function addNodeAtLayout(p, from = null) {
+function addNodeAtLayout(p, from = null, kind = null) {
   let id;
+  const key = kind ?? pickedKind();
   const ok = applySource((src) => {
-    id = fe.freshId(src, good.keys);
+    id = fe.newNodeId(src, good.keys, key);
     if (p) savedPos.set(id, p);
-    const next = fe.addNode(src, id, "New node");
+    const next = fe.addNode(src, id, "New node", key);
     return from ? fe.addEdge(next, from, id) : next;
   });
   if (!ok) return;
   select({ type: "node", id });
   reveal(id);
-  startRename(id);
+  // On a class / ER / state diagram the key *is* the name shown, and
+  // renaming it means rewriting every statement that mentions it — not
+  // written yet, so the name is edited in the code panel for now.
+  if (canEdit()) startRename(id);
 }
 
 // Pan just enough to bring a node into view (clear of the floating bars).
@@ -1573,7 +1637,7 @@ function deleteSelection() {
 // ── Connect: drag from the ● handle (or Shift+drag a node) ──
 function startLink(from, ev) {
   const r = nodeRect(from);
-  if (!r) return;
+  if (!r || !fe.isWritableKey(from)) return;
   link = { from, x: r.cx, y: r.cy, sx: ev.clientX, sy: ev.clientY };
   drag = null; pan = null;
   view.setPointerCapture(ev.pointerId);
@@ -1609,7 +1673,7 @@ function endLink(ev, commit) {
   const i = hitNode(ev);
   if (i >= 0) {
     const to = good.keys[i];
-    if (to === from) return;
+    if (to === from || !fe.isWritableKey(to)) return;
     if (applySource((src) => fe.addEdge(src, from, to))) select({ type: "node", id: to });
     return;
   }
@@ -1644,9 +1708,16 @@ function placeTools() {
   // A node in a multi-selection uses the selection's toolbar instead.
   const busy = drag || pan || link || pinch || renaming?.id === hoverId ||
     (sel?.type === "nodes" && sel.ids.includes(hoverId));
-  const r = !busy && canEdit() && hoverId && good.keys.includes(hoverId) ? nodeRect(hoverId) : null;
-  nodeTools.classList.toggle("show", !!r);
-  const selected = editActive() && sel?.type === "node" && sel.id === hoverId;
+  const r = !busy && canPick() && hoverId && good.keys.includes(hoverId) ? nodeRect(hoverId) : null;
+  // Only the actions this type can carry out: hovering a class box shows
+  // no flowchart buttons, and with nothing to offer the toolbar stays
+  // away while the hover outline still marks what a drag would move.
+  const acts = canEdit() ? NODE_ACTS
+    : hoverId && fe.isWritableKey(hoverId) ? (NODE_ACTS_BY_KIND[docKind()] ?? [])
+    : [];
+  for (const b of nodeTools.querySelectorAll("[data-act]")) b.hidden = !acts.includes(b.dataset.act);
+  nodeTools.classList.toggle("show", !!r && acts.length > 0);
+  const selected = pickActive() && sel?.type === "node" && sel.id === hoverId;
   hoverBox.style.display = r && !selected ? "block" : "none";
   if (!r) return;
   Object.assign(hoverBox.style, { left: r.x - 4 + "px", top: r.y - 4 + "px", width: r.w + 8 + "px", height: r.h + 8 + "px" });
@@ -1893,6 +1964,7 @@ const PALETTE = [
   ["Purple", "#f3e8ff", "#8839ef"], ["Teal", "#e3fafc", "#1098ad"], ["Grey", "#f1f3f5", "#868e96"],
 ];
 const palette = document.getElementById("palette");
+const shapesMenu = document.getElementById("shapes");
 var paletteFor = null; // { ids, anchor }
 palette.replaceChildren(...PALETTE.map(([name, fill, stroke], i) => {
   const b = document.createElement("button");
@@ -1939,6 +2011,113 @@ function closePalette() {
 document.addEventListener("pointerdown", (e) => {
   if (paletteFor && !e.target.closest?.("#palette, [data-act=color]")) closePalette();
 }, true);
+
+// ── Node shapes ──
+// The syntax of each shape lives in flowedit.js; its picture lives here.
+const SHAPE_ART = {
+  rect: '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="1"/>',
+  rounded: '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="3.4"/>',
+  stadium: '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="4.6"/>',
+  subroutine: '<rect x="1.6" y="3.4" width="18.8" height="9.2"/><path d="M5 3.4v9.2M17 3.4v9.2"/>',
+  cylinder: '<path d="M2.4 5.2c0-1 3.8-1.8 8.6-1.8s8.6.8 8.6 1.8v5.6c0 1-3.8 1.8-8.6 1.8s-8.6-.8-8.6-1.8z"/><path d="M2.4 5.2c0 1 3.8 1.8 8.6 1.8s8.6-.8 8.6-1.8"/>',
+  circle: '<circle cx="11" cy="8" r="5.4"/>',
+  double: '<circle cx="11" cy="8" r="5.4"/><circle cx="11" cy="8" r="3.1"/>',
+  diamond: '<path d="M11 2.6 19.6 8 11 13.4 2.4 8z"/>',
+  hexagon: '<path d="M5.6 3.4h10.8L19.6 8l-3.2 4.6H5.6L2.4 8z"/>',
+  "lean-r": '<path d="M5.6 3.4h14L16.4 12.6H2.4z"/>',
+  "lean-l": '<path d="M2.4 3.4h14l3.2 9.2H5.6z"/>',
+  // A class box carries a name band; the dashes mark an interface, the
+  // slant an abstract, the dots an enumeration's members.
+  "class:class": '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="1"/><path d="M1.6 6.6h18.8"/>',
+  "class:members": '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="1"/><path d="M1.6 6.6h18.8M4.4 9h8.6M4.4 11h5.4"/>',
+  "class:interface": '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="1" stroke-dasharray="2.6 1.8"/><path d="M1.6 6.6h18.8"/>',
+  "class:abstract": '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="1"/><path d="M1.6 6.6h18.8M8.2 11.8 12.8 7.8"/>',
+  "class:enum": '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="1"/><path d="M1.6 6.6h18.8"/><circle cx="6" cy="10" r=".9" fill="currentColor" stroke="none"/><circle cx="9.4" cy="10" r=".9" fill="currentColor" stroke="none"/><circle cx="12.8" cy="10" r=".9" fill="currentColor" stroke="none"/>',
+  "er:entity": '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="1"/>',
+  "er:attr": '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="1"/><path d="M1.6 6.6h18.8M4.4 9.8h9.4"/>',
+  "er:key": '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="1"/><path d="M1.6 6.6h18.8M7.8 9.8h6"/><circle cx="5" cy="9.8" r="1.1" fill="currentColor" stroke="none"/>',
+  "state:state": '<rect x="1.6" y="3.4" width="18.8" height="9.2" rx="3.4"/>',
+  "state:choice": '<path d="M11 2.6 19.6 8 11 13.4 2.4 8z"/>',
+  "state:fork": '<rect x="2.4" y="6.8" width="17.2" height="2.4" rx="1" fill="currentColor" stroke="none"/>',
+};
+let shapePick = null;
+// What the picker offers depends on the document, so what it remembers
+// does too: a hexagon chosen on a flowchart must not become the default
+// member of the next class diagram.
+let lastKind = {};
+try { lastKind = JSON.parse(localStorage.getItem("nodekind") || "{}") ?? {}; } catch {}
+function pickedKind() {
+  const items = fe.NODE_KINDS[docKind() ?? "flowchart"] ?? [];
+  return items.some((s) => s.key === lastKind[docKind()]) ? lastKind[docKind()] : items[0]?.key ?? "rect";
+}
+
+function fillShapes(kind) {
+  shapesMenu.replaceChildren(...(fe.NODE_KINDS[kind] ?? []).map((s) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.shape = s.key;
+    b.setAttribute("role", "menuitemradio");
+    const art = SHAPE_ART[`${kind}:${s.key}`] ?? SHAPE_ART[s.key] ?? SHAPE_ART.rect;
+    b.innerHTML = `<svg viewBox="0 0 22 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" aria-hidden="true">${art}</svg><span></span>`;
+    b.lastChild.textContent = s.name;
+    return b;
+  }));
+}
+
+// Offer this type's nodes near (clientX, clientY); `choose` gets the key.
+function openShapes(clientX, clientY, choose) {
+  const kind = docKind() ?? "flowchart";
+  if (!(fe.NODE_KINDS[kind] ?? []).length) return;
+  fillShapes(kind);
+  shapePick = { choose, kind };
+  const want = pickedKind();
+  for (const b of shapesMenu.querySelectorAll("[data-shape]")) {
+    b.setAttribute("aria-checked", String(b.dataset.shape === want));
+  }
+  shapesMenu.classList.add("show");
+  const vr = view.getBoundingClientRect();
+  const w = shapesMenu.offsetWidth, h = shapesMenu.offsetHeight;
+  let top = clientY - vr.top + 14;
+  // Flip above the anchor when there is no room below: the edit bar runs
+  // along the bottom, and a menu under it would swallow its own presses.
+  if (top + h > vr.height - 4) top = clientY - vr.top - h - 14;
+  Object.assign(shapesMenu.style, {
+    left: Math.max(4, Math.min(vr.width - w - 4, clientX - vr.left - w / 2)) + "px",
+    top: Math.max(4, Math.min(vr.height - h - 4, top)) + "px",
+  });
+  shapesMenu.querySelector(`[data-shape="${want}"]`)?.focus({ preventScroll: true });
+}
+function closeShapes() {
+  if (!shapePick) return;
+  shapePick = null;
+  shapesMenu.classList.remove("show");
+}
+// Keep the press off the canvas, which would read it as the start of a pan.
+shapesMenu.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+shapesMenu.addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-shape]");
+  if (!b || !shapePick) return;
+  const { choose, kind } = shapePick;
+  const key = b.dataset.shape;
+  lastKind[kind] = key;
+  try { localStorage.setItem("nodekind", JSON.stringify(lastKind)); } catch {}
+  closeShapes();
+  choose(key);
+});
+document.addEventListener("pointerdown", (e) => {
+  if (shapePick && !e.target.closest?.("#shapes, #edit-add")) closeShapes();
+}, true);
+document.addEventListener("keydown", (e) => {
+  if (shapePick && e.key === "Escape") { e.stopPropagation(); closeShapes(); }
+}, true);
+
+// A deliberate "add a node" asks which kind of node first; the keyboard
+// flow (Tab / Enter) and a link dragged onto empty canvas keep their
+// speed and reuse the last one picked for this type of diagram.
+function addNodeAsking(clientX, clientY) {
+  if (!canAdd()) return;
+  openShapes(clientX, clientY, (key) => addNodeAt(clientX, clientY, null, key));
+}
 
 linkHandle.addEventListener("pointerdown", (ev) => {
   if (!sel || sel.type !== "node") return;
@@ -2021,7 +2200,11 @@ view.addEventListener("scroll", () => { view.scrollLeft = 0; view.scrollTop = 0;
 
 editBtn.addEventListener("click", () => setEditMode(!editMode));
 editBar.addEventListener("pointerdown", (e) => e.stopPropagation());
-editAdd.addEventListener("click", () => addNodeAt());
+editAdd.addEventListener("click", () => {
+  if (!canAdd()) return;
+  const r = editAdd.getBoundingClientRect();
+  openShapes(r.left + r.width / 2, r.top, (key) => addNodeAt(undefined, undefined, null, key));
+});
 editDel.addEventListener("click", deleteSelection);
 
 // Keyboard, mind-map style: Tab adds a child, Enter a sibling, F2
@@ -2107,7 +2290,7 @@ function keepCentre() {
 new ResizeObserver(keepCentre).observe(view);
 document.getElementById("zoom-pct").addEventListener("click", () => fitView(1));
 view.addEventListener("dblclick", (e) => {
-  if (e.target.closest?.("#edit-bar, #rename, #zoombar, #link-handle, .tools, #palette")) return;
+  if (e.target.closest?.("#edit-bar, #rename, #zoombar, #link-handle, .tools, #palette, #shapes")) return;
   // Pointer capture during a link gesture retargets the click to #view,
   // so test the handle by position too.
   if (linkHandle.style.display === "block") {
@@ -2119,7 +2302,7 @@ view.addEventListener("dblclick", (e) => {
     const ed = i < 0 && e.target.closest?.("[data-edge-from]");
     if (i >= 0) startRename(good.keys[i]);
     else if (ed) startEdgeLabel(edgeOfEl(ed));
-    else addNodeAt(e.clientX, e.clientY);
+    else addNodeAsking(e.clientX, e.clientY);
     return;
   }
   if (i < 0) fitView();
@@ -2793,7 +2976,10 @@ document.addEventListener("keydown", (e) => {
   else if (k === "F" && e.shiftKey) toggleFullscreen();
   else if (k === "f" || k === "F") fitView();
   else if (k === "v" || k === "V") setEditMode(!editMode);
-  else if ((k === "n" || k === "N") && editActive()) addNodeAt();
+  else if ((k === "n" || k === "N") && editActive()) {
+    const vr = view.getBoundingClientRect();
+    openShapes(vr.left + vr.width / 2, vr.top + vr.height / 2, (shape) => addNodeAt(undefined, undefined, null, shape));
+  }
   else if (files.length && (k === "ArrowDown" || k === "j")) {
     e.preventDefault();
     selectFile(Math.min(files.length - 1, current + 1));
