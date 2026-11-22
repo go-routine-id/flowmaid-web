@@ -326,6 +326,19 @@
     /* 16px keeps iOS from zooming the page when the box takes focus. */
     #rename { height: 42px; font-size: 16px; }
   }
+  /* ── Fullscreen: the canvas alone ── */
+  #zoom-full svg { width: 15px; height: 15px; display: block; margin: auto; }
+  #zoom-full .fs-off, body.fullscreen #zoom-full .fs-on { display: none; }
+  body.fullscreen #zoom-full .fs-off { display: inline; }
+  body.fullscreen #zoom-full { background: var(--accent); color: var(--accent-ink); }
+  body.fullscreen header, body.fullscreen footer, body.fullscreen #files,
+  body.fullscreen #editor-wrap, body.fullscreen .seam-anchor, body.fullscreen #drop-hint { display: none !important; }
+  /* The error bar floats over the canvas instead of taking a row. */
+  body.fullscreen #error { position: fixed; left: 0; right: 0; top: 0; z-index: 40; }
+  /* Notches and home bars: keep the floating bars clear of them. */
+  body.fullscreen #zoombar { bottom: max(8px, env(safe-area-inset-bottom)); right: max(8px, env(safe-area-inset-right)); }
+  body.fullscreen #edit-bar { bottom: max(8px, env(safe-area-inset-bottom)); left: max(8px, env(safe-area-inset-left)); }
+
   /* ── Collapse handle riding the editor/view divider ── */
   .seam-anchor { position: relative; width: 0; flex: none; }
   .collapse-handle {
@@ -605,6 +618,7 @@
       <button id="zoom-pct" class="pct" title="Reset to 100%">100%</button>
       <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
       <button id="zoom-fit" title="Fit diagram to view" aria-label="Fit diagram to view">Fit</button>
+      <button id="zoom-full" title="Fullscreen (Shift+F)" aria-label="Fullscreen" aria-pressed="false"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="fs-on" d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/><path class="fs-off" d="M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5"/></svg></button>
     </div>
   </div>
 </main>
@@ -2018,7 +2032,11 @@ document.addEventListener("keydown", (e) => {
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === "g" && selIds().length) { e.preventDefault(); groupSelection(); return; }
   if (mod) return;
-  if (e.key === "Escape") { if (paletteFor) closePalette(); else if (sel) select(null); return; }
+  if (e.key === "Escape") {
+    // Handled here first; fullscreen only exits on an Escape nobody used.
+    if (paletteFor) { closePalette(); e.preventDefault(); } else if (sel) { select(null); e.preventDefault(); }
+    return;
+  }
   if (!sel) return;
   if (e.target.closest?.("button") && (e.key === "Enter" || e.key === " ")) return;
   const one = sel.type === "node" ? sel.id : null;
@@ -2048,6 +2066,45 @@ document.getElementById("zoom-out").addEventListener("click", () => {
   zoomAt(vr.width / 2, vr.height / 2, 1 / 1.25);
 });
 document.getElementById("zoom-fit").addEventListener("click", () => fitView());
+
+// ── Fullscreen ──
+// The page hides everything but the canvas (body.fullscreen); where the
+// browser allows it, the window goes fullscreen too. iPhone Safari has
+// no Fullscreen API for pages, so there it is the CSS mode alone.
+const fullBtn = document.getElementById("zoom-full");
+function setFullscreen(on) {
+  if (on === document.body.classList.contains("fullscreen")) return;
+  // Keep the point at the middle of the canvas in the middle.
+  document.body.classList.toggle("fullscreen", on);
+  fullBtn.setAttribute("aria-pressed", String(on));
+  fullBtn.title = on ? "Exit fullscreen (Esc)" : "Fullscreen (Shift+F)";
+  keepCentre();
+  const el = document.documentElement;
+  if (on && !document.fullscreenElement && el.requestFullscreen) {
+    el.requestFullscreen({ navigationUI: "hide" }).catch(() => {});
+  } else if (!on && document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  }
+}
+function toggleFullscreen() { setFullscreen(!document.body.classList.contains("fullscreen")); }
+fullBtn.addEventListener("click", toggleFullscreen);
+// Leaving the browser's fullscreen (Esc, back gesture) leaves ours too.
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement) setFullscreen(false);
+});
+// When the canvas changes size (fullscreen, the browser's own fullscreen
+// a moment later, rotating a phone), keep its middle point in the middle.
+let viewSize = null;
+function keepCentre() {
+  const r = view.getBoundingClientRect();
+  if (viewSize) {
+    cam.x += (r.width - viewSize.w) / 2;
+    cam.y += (r.height - viewSize.h) / 2;
+  }
+  viewSize = { w: r.width, h: r.height };
+  applyCam();
+}
+new ResizeObserver(keepCentre).observe(view);
 document.getElementById("zoom-pct").addEventListener("click", () => fitView(1));
 view.addEventListener("dblclick", (e) => {
   if (e.target.closest?.("#edit-bar, #rename, #zoombar, #link-handle, .tools, #palette")) return;
@@ -2733,6 +2790,7 @@ document.addEventListener("keydown", (e) => {
   const k = e.key;
   if (k === "e" || k === "E") document.getElementById("engine").click();
   else if (k === "t" || k === "T") toggleTheme();
+  else if (k === "F" && e.shiftKey) toggleFullscreen();
   else if (k === "f" || k === "F") fitView();
   else if (k === "v" || k === "V") setEditMode(!editMode);
   else if ((k === "n" || k === "N") && editActive()) addNodeAt();
@@ -2743,6 +2801,14 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     selectFile(Math.max(0, current - 1));
   }
+});
+
+// Escape leaves fullscreen once nothing else wanted it (palette,
+// selection, rename box, menus).
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || e.defaultPrevented || !document.body.classList.contains("fullscreen")) return;
+  if (e.target.closest?.("textarea, input, .dd")) return;
+  setFullscreen(false);
 });
 
 await init();
