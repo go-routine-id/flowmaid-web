@@ -18,7 +18,9 @@ document.body.innerHTML = render_svg("flowchart TD\nA([Start]) --> B{OK?}");
 
 ## Visual editing
 
-Press **Edit** (or `V`) in the playground to edit flowcharts on the canvas:
+Hover any flowchart node (tap it on a touch screen) for a small toolbar: **+** adds the next node along the flow, already connected, in the nearest free spot (drag **+** onto another node to connect them instead); **✎** edits the label; **🗑** deletes the node and its edges.
+
+Press **Edit** (or `V`) for the rest of the canvas gestures:
 
 - double-click empty canvas (or **+ Node**, `N`) — add a node, then type its label
 - double-click a node (or `Enter` / `F2` on the selected one) — rename it in place
