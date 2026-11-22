@@ -18,16 +18,15 @@ document.body.innerHTML = render_svg("flowchart TD\nA([Start]) --> B{OK?}");
 
 ## Visual editing
 
-Hover any flowchart node (tap it on a touch screen) for a small toolbar: **+** adds the next node along the flow, already connected, in the nearest free spot (drag **+** onto another node to connect them instead); **✎** edits the label; **🗑** deletes the node and its edges.
+Flowcharts can be edited straight on the canvas; every action is written back into the Mermaid source.
 
-Press **Edit** (or `V`) for the rest of the canvas gestures:
+- **Hover a node** (tap it on a touch screen) for a toolbar: **+** adds the next node along the flow, already connected, in the nearest free spot (drag **+** onto another node to connect them instead), **✎** edits the label, **🎨** sets its colour (a `style` line), **🗑** deletes it with its edges.
+- **Click an edge** (or its label) for its toolbar: edit the label, switch solid / dotted / thick, reverse it, delete it. Double-click an edge to edit its label.
+- **Keyboard**, with a node selected: `Tab` adds a child, `Enter` a sibling, `F2` renames, arrow keys move between nodes, `Delete` removes, `Esc` clears the selection.
+- **Several nodes**: Shift+click or Ctrl/⌘+click to select more, then **Group** (or Ctrl/⌘+G) wraps them in a `subgraph` and asks for its title; **Ungroup**, colour and delete work on the whole selection.
+- Double-click empty canvas for a new node; drag the ● handle of a selected node (or Shift+drag a node) to connect.
 
-- double-click empty canvas (or **+ Node**, `N`) — add a node, then type its label
-- double-click a node (or `Enter` / `F2` on the selected one) — rename it in place
-- drag the ● handle of the selected node (or Shift+drag a node) onto another node to connect them; drop on empty canvas to create a connected node
-- click a node or an edge, then `Delete` — remove it (a node takes its edges and `style` / `class` / `click` lines with it)
-
-Every action is a text edit on the Mermaid source (`flowedit.js`): only the statements it touches are rewritten, and Ctrl/⌘+Z in the code panel undoes canvas edits too. Tests: `node tests/flowedit.test.mjs`.
+The **Edit** button (`V`) turns these canvas gestures off and on; it is on by default. Only the statements an action touches are rewritten (`flowedit.js`), and Ctrl/⌘+Z in the code panel undoes canvas edits too. Tests: `node tests/flowedit.test.mjs`.
 
 ## Building
 
