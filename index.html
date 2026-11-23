@@ -287,9 +287,19 @@
   }
   #stage .edge-label-hit { cursor: pointer; }
   #rename {
-    position: absolute; z-index: 6; height: 34px; padding: 0 10px; text-align: center;
-    font: 500 14px var(--body); color: var(--ink); background: var(--bg);
-    border: 2px solid var(--accent); border-radius: 6px; outline: none;
+    position: absolute; z-index: 6; box-sizing: border-box; height: 34px; padding: 0 8px; text-align: center;
+    font: 500 14px var(--body); color: var(--ink); caret-color: var(--accent); background: var(--bg);
+    border: 1.5px solid var(--accent); border-radius: 6px; outline: none;
+    box-shadow: 0 0 0 4px var(--accent-soft), 0 6px 18px rgb(0 0 0 / .12);
+  }
+  #rename::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--ink); }
+  #rename::placeholder { color: var(--muted); }
+  /* Editing a node's label happens inside the node: its own shape and
+     fill stay visible, the drawn text hides, and the box only shows up
+     once the text outgrows the node. */
+  #rename.inline { background: transparent; border-color: transparent; box-shadow: none; }
+  #rename.inline.overflow {
+    background: var(--bg); border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft);
   }
   #stage .edge-hit { stroke: transparent; stroke-width: 14; fill: none; cursor: pointer; pointer-events: stroke; }
   #stage path.edge-sel { stroke: #8839ef; stroke-width: 3.5; }
@@ -324,7 +334,7 @@
     #palette button { width: 32px; height: 32px; }
     #link-handle { width: 24px; height: 24px; margin: -12px 0 0 -12px; }
     /* 16px keeps iOS from zooming the page when the box takes focus. */
-    #rename { height: 42px; font-size: 16px; }
+    #rename:not(.inline) { height: 42px; font-size: 16px; }
   }
   /* ── Fullscreen: the canvas alone ── */
   #zoom-full svg { width: 15px; height: 15px; display: block; margin: auto; }
@@ -1461,7 +1471,8 @@ function nodeRect(id) {
 
 function updateOverlay() {
   const r = editActive() && sel?.type === "node" ? nodeRect(sel.id) : null;
-  selBox.style.display = linkHandle.style.display = r ? "block" : "none";
+  selBox.style.display = r ? "block" : "none";
+  linkHandle.style.display = r && !renaming ? "block" : "none";
   if (r) {
     Object.assign(selBox.style, { left: r.x - 4 + "px", top: r.y - 4 + "px", width: r.w + 8 + "px", height: r.h + 8 + "px" });
     Object.assign(linkHandle.style, { left: r.x + r.w + 14 + "px", top: r.cy + "px" });
@@ -1642,7 +1653,7 @@ function setHover(id, pin = false) {
 
 function placeTools() {
   // A node in a multi-selection uses the selection's toolbar instead.
-  const busy = drag || pan || link || pinch || renaming?.id === hoverId ||
+  const busy = drag || pan || link || pinch || !!renaming ||
     (sel?.type === "nodes" && sel.ids.includes(hoverId));
   const r = !busy && canEdit() && hoverId && good.keys.includes(hoverId) ? nodeRect(hoverId) : null;
   nodeTools.classList.toggle("show", !!r);
@@ -1957,7 +1968,8 @@ function openRename(state, value, placeholder) {
   renameInput.value = value;
   renameInput.placeholder = placeholder;
   renameInput.hidden = false;
-  placeRename();
+  // Hides the hover toolbar and link handle while typing.
+  updateOverlay();
   renameInput.focus({ preventScroll: true });
   renameInput.select();
 }
@@ -1970,14 +1982,54 @@ function startGroupTitle(gid, ids) {
   const b = fe.subgraphs(editor.value).blocks.find((x) => x.id === gid);
   openRename({ group: gid, ids }, b?.title ?? "Group", "Group title");
 }
+// The SVG group drawing a node: the <g> centred where the node is.
+function nodeGroup(id) {
+  const r = nodeRect(id);
+  if (!r) return null;
+  const vr = view.getBoundingClientRect();
+  for (const g of stage.querySelectorAll("svg > g")) {
+    const b = g.getBoundingClientRect();
+    if (Math.abs(b.left + b.width / 2 - vr.left - r.cx) < 4 && Math.abs(b.top + b.height / 2 - vr.top - r.cy) < 4) return g;
+  }
+  return null;
+}
+let measureCtx = null;
+function textWidth(text, font) {
+  measureCtx ??= document.createElement("canvas").getContext("2d");
+  measureCtx.font = font;
+  return measureCtx.measureText(text).width;
+}
+const COARSE = matchMedia("(pointer: coarse)");
+
 function placeRename() {
   if (!renaming) return;
   let cx, cy, w = 150;
   if (renaming.id) {
-    const r = nodeRect(renaming.id);
-    if (!r) return;
-    cx = r.cx; cy = r.cy; w = Math.max(r.w + 24, 150);
-  } else if (renaming.edge) {
+    const r = nodeRect(renaming.id), sc = svgScale();
+    if (!r || !sc) return;
+    // Same face and size as the diagram's labels at the current zoom
+    // (16px at least on touch screens, or iOS zooms the page).
+    const px = Math.max(14 / sc.sx, COARSE.matches ? 16 : 0);
+    const font = `400 ${px}px Helvetica, Arial, sans-serif`;
+    const need = textWidth(renameInput.value || renameInput.placeholder, font) + 22;
+    const room = Math.max(r.w - 12, 40);
+    w = Math.max(room, need);
+    const h = Math.max(Math.min(r.h - 6, px * 2.4), px + 12);
+    renameInput.classList.add("inline");
+    renameInput.classList.toggle("overflow", need > room + 1);
+    Object.assign(renameInput.style, { font, height: h + "px", left: r.cx - w / 2 + "px", top: r.cy - h / 2 + "px", width: w + "px" });
+    // Hide the drawn label so only the editable text shows (re-applied
+    // after every render, since rendering replaces the SVG).
+    const g = nodeGroup(renaming.id);
+    if (g && g !== renaming.hidden) {
+      g.querySelectorAll("text").forEach((t) => { t.style.visibility = "hidden"; });
+      renaming.hidden = g;
+    }
+    return;
+  }
+  renameInput.classList.remove("inline", "overflow");
+  renameInput.style.font = renameInput.style.height = "";
+  if (renaming.edge) {
     const m = edgeMid(renaming.edge);
     if (!m) return;
     [cx, cy] = m; w = 170;
@@ -2003,8 +2055,9 @@ function commitRename() {
   }
 }
 function cancelRename() {
+  renaming?.hidden?.querySelectorAll("text").forEach((t) => { t.style.visibility = ""; });
   renaming = null;
-  if (!renameInput.hidden) { renameInput.hidden = true; view.focus({ preventScroll: true }); }
+  if (!renameInput.hidden) { renameInput.hidden = true; view.focus({ preventScroll: true }); updateOverlay(); }
 }
 renameInput.addEventListener("keydown", (e) => {
   e.stopPropagation();
@@ -2012,6 +2065,7 @@ renameInput.addEventListener("keydown", (e) => {
   else if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
 });
 renameInput.addEventListener("blur", () => { if (renaming) commitRename(); });
+renameInput.addEventListener("input", placeRename);
 renameInput.addEventListener("pointerdown", (e) => e.stopPropagation());
 
 // Typing in the rename box near the canvas edge makes the browser
