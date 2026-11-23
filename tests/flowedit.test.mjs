@@ -117,4 +117,26 @@ assert.equal(fe.ungroup(s, "G1"), S);
 assert.equal(fe.deleteNode(fe.deleteNode(s, "A"), "B").includes("subgraph"), false);
 assert.equal(fe.renameGroup(s, "G1", "In put (x)").includes('subgraph G1 ["In put (x)"]'), true);
 }
+// ── Shapes ──
+{
+  const S = 'flowchart TD\n    A[Start] --> B\n    B --> C(["a (b)"])\n    D{{Hex}} --> E[/In/]\n    F@{ shape: circle, label: "Qq" }';
+  const shapeOf = (src, label) => { const s = m.render_svg(src); const g = s.match(new RegExp(`<g><title>${label.replace(/[()]/g, "\\$&")}</title>\\s*<(\\w+)([^>]*)>`)); return g && (g[1] + (g[1] === "rect" ? ":" + g[2].match(/rx="([\d.]+)"/)[1] : "")); };
+  assert.equal(fe.nodeShape(S, "A"), "rect"); assert.equal(fe.nodeShape(S, "B"), "rect");
+  assert.equal(fe.nodeShape(S, "C"), "stadium"); assert.equal(fe.nodeShape(S, "D"), "hexagon"); assert.equal(fe.nodeShape(S, "E"), "parallelogram");
+  for (const k of Object.keys(fe.NODE_SHAPES)) {
+    for (const id of ["A", "B", "C", "D", "F"]) {
+      const out = fe.setNodeShape(S, [id], k);
+      m.node_keys(out);
+      assert.equal(fe.nodeShape(out, id), k, `${id} -> ${k}\n${out}`);
+      assert.equal(fe.nodeLabel(out, id), fe.nodeLabel(S, id), `${id} label kept -> ${k}\n${out}`);
+    }
+  }
+  assert.match(fe.setNodeShape(S, ["A"], "diamond"), /A\{Start\} --> B/);
+  assert.match(fe.setNodeShape(S, ["B"], "circle"), /A\[Start\] --> B\(\(B\)\)/);
+  assert.match(fe.setNodeShape(S, ["C"], "cylinder"), /C\[\("a \(b\)"\)\]/);
+  assert.equal(shapeOf(fe.setNodeShape(S, ["A"], "circle"), "Start"), "circle");
+  assert.equal(shapeOf(fe.setNodeShape(S, ["A"], "diamond"), "Start"), "polygon");
+  const two = fe.setNodeShape(S, ["A", "D"], "rounded");
+  assert.equal(fe.nodeShape(two, "A"), "rounded"); assert.equal(fe.nodeShape(two, "D"), "rounded");
+}
 console.log("ALL OK");

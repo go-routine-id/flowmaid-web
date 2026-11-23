@@ -715,3 +715,57 @@ export function ungroup(src, gid) {
   lines.splice(b.line, b.endLine - b.line + 1, ...out);
   return lines.join("\n");
 }
+
+// ── Node shapes ──
+
+/** Shapes the engine draws distinctly, with their Mermaid brackets. */
+export const NODE_SHAPES = {
+  rect: ["[", "]"], rounded: ["(", ")"], stadium: ["([", "])"], subroutine: ["[[", "]]"],
+  cylinder: ["[(", ")]"], circle: ["((", "))"], doublecircle: ["(((", ")))"],
+  diamond: ["{", "}"], hexagon: ["{{", "}}"], parallelogram: ["[/", "/]"], parallelogramalt: ["[\\", "\\]"],
+};
+
+// The ref whose shape Mermaid uses (the last one that has one).
+function shapeRef(doc, id) {
+  const refs = [...allRefs(doc)].filter((r) => r.id === id);
+  return refs.filter((r) => r.shape).at(-1) ?? refs[0] ?? null;
+}
+
+/** Current shape key of a node ("rect" when it has no brackets). */
+export function nodeShape(src, id) {
+  const r = shapeRef(parseFlow(src), id);
+  if (!r) return null;
+  if (!r.shape) return "rect";
+  if (r.shape.kind === "at") return null;
+  const close = src.slice(r.shape.innerEnd, r.shape.end);
+  const open = r.shape.open;
+  // Trapezoids draw as parallelograms; `>x]` draws as a rectangle.
+  if (open === "[/") return "parallelogram";
+  if (open === "[\\") return "parallelogramalt";
+  if (open === ">") return "rect";
+  for (const [k, [o, c]] of Object.entries(NODE_SHAPES)) if (o === open && c === close) return k;
+  return null;
+}
+
+/** Give nodes another shape, keeping their labels. */
+export function setNodeShape(src, ids, key) {
+  const [open, close] = NODE_SHAPES[key] ?? NODE_SHAPES.rect;
+  for (const id of ids) {
+    const doc = parseFlow(src);
+    const r = shapeRef(doc, id);
+    if (!r) continue;
+    const label = nodeLabel(src, id);
+    if (!r.shape) {
+      src = splice(src, [[r.idEnd, r.idEnd, open + formatLabel(label) + close]]);
+      continue;
+    }
+    let inner = src.slice(r.shape.innerStart, r.shape.innerEnd);
+    // Keep the text as typed when it is quoted or plain; anything with
+    // brackets or slashes could close the new shape early, so re-quote.
+    const t = inner.trim();
+    const quoted = t.length >= 2 && t[0] === '"' && t.at(-1) === '"';
+    if (r.shape.kind === "at" || !(quoted || /^[^()[\]{}/\\<>"]*$/.test(inner))) inner = formatLabel(label);
+    src = splice(src, [[r.shape.start, r.shape.end, open + inner + close]]);
+  }
+  return src;
+}
