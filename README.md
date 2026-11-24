@@ -20,10 +20,10 @@ document.body.innerHTML = render_svg("flowchart TD\nA([Start]) --> B{OK?}");
 
 Flowcharts can be edited straight on the canvas; every action is written back into the Mermaid source.
 
-- **Hover a node** (tap it on a touch screen) for a toolbar: **+** adds the next node along the flow, already connected, in the nearest free spot (drag **+** onto another node to connect them instead), **✎** edits the label, **🎨** sets its colour (a `style` line), **🗑** deletes it with its edges.
+- **Hover a node** (tap it on a touch screen) for a toolbar: **+** adds the next node along the flow, already connected, in the nearest free spot (drag **+** onto another node to connect them instead), **✎** edits the label, **◩** changes its shape (rectangle, rounded, stadium, subroutine, database, circle, double circle, decision, hexagon, input/output), **🎨** sets its colour (a `style` line), **🗑** deletes it with its edges.
 - **Click an edge** (or its label) for its toolbar: edit the label, switch solid / dotted / thick, reverse it, delete it. Double-click an edge to edit its label.
 - **Keyboard**, with a node selected: `Tab` adds a child, `Enter` a sibling, `F2` renames, arrow keys move between nodes, `Delete` removes, `Esc` clears the selection.
-- **Several nodes**: Shift+click or Ctrl/⌘+click to select more, then **Group** (or Ctrl/⌘+G) wraps them in a `subgraph` and asks for its title; **Ungroup**, colour and delete work on the whole selection.
+- **Several nodes**: Shift+click or Ctrl/⌘+click to select more, then **Group** (or Ctrl/⌘+G) wraps them in a `subgraph` and asks for its title; **Ungroup**, shape, colour and delete work on the whole selection.
 - Double-click empty canvas for a new node; drag the ● handle of a selected node (or Shift+drag a node) to connect.
 
 The ⛶ button on the zoom bar (or Shift+F) shows the canvas alone, fullscreen where the browser allows it; Esc leaves.
