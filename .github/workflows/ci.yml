@@ -19,14 +19,19 @@ jobs:
 
   mcp:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: mcp
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: cargo clippy -p flowmaid-mcp --all-targets -- -D warnings
+      - run: cargo build -p flowmaid-mcp
+      # The playground's edit logic (wasm build of src/edit.rs) against its JS tests.
+      - run: node tests/flowedit.test.mjs
       - run: npm ci
+        working-directory: mcp/test
       - run: npm test
-      - run: node ../tests/flowedit.test.mjs
+        working-directory: mcp/test

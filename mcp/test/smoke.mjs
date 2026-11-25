@@ -1,17 +1,18 @@
 // End-to-end: start the server over stdio with the real MCP client, drive
 // every tool, and check the live channel (SSE out, POST in) and the file
-// binding. Run: npm test
+// binding, against the Rust binary. Run: cargo build -p flowmaid-mcp && npm test
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { bin } from "./bin.mjs";
 
 const client = new Client({ name: "smoke", version: "0" });
 await client.connect(new StdioClientTransport({
-  command: process.execPath,
-  args: [new URL("../server.js", import.meta.url).pathname],
+  command: bin, args: [],
   env: { ...process.env, FLOWMAID_PORT: "7999" },
   stderr: "pipe",
 }));
@@ -129,8 +130,58 @@ g = (await call("get_diagram", { doc: "f" })).json;
 assert.match(g.source, /Edited outside/);
 assert.equal(g.changed_by, "file");
 
+// review fixes ─────────────────────────────────────────────────────────
+// an outside revert to text we wrote earlier still flows in
+await call("edit_diagram", { doc: "f", ops: [{ op: "rename_node", id: "X", label: "Agent wrote" }] });
+const agentText = readFileSync(file, "utf8");
+writeFileSync(file, "flowchart LR\n    X[Someone else] --> Y\n");
+await waitFor(() => false).catch(() => {});
+writeFileSync(file, agentText);
+await waitFor(() => false).catch(() => {});
+assert.match((await call("get_diagram", { doc: "f" })).json.source, /Agent wrote/, "revert seen");
+// editors that save by renaming a temp file over the original
+writeFileSync(file + ".swp", "flowchart LR\n    X[Saved by vim] --> Y\n");
+renameSync(file + ".swp", file);
+await waitFor(() => false).catch(() => {});
+assert.match((await call("get_diagram", { doc: "f" })).json.source, /Saved by vim/, "rename-save seen");
+// a failed open_file keeps the earlier binding
+r = await call("open_file", { path: dir, doc: "f" });
+assert.ok(r.isError);
+g = (await call("get_diagram", { doc: "f" })).json;
+assert.equal(g.file, file);
+await call("edit_diagram", { doc: "f", ops: [{ op: "rename_node", id: "X", label: "Still bound" }] });
+assert.match(readFileSync(file, "utf8"), /Still bound/);
+// a malformed request can't take the server down
+await new Promise((ok) => {
+  const sock = net.connect(Number(url.port), "127.0.0.1", () => sock.end("GET / HTTP/1.1\r\nHost: [\r\n\r\n"));
+  sock.on("data", () => {}); sock.on("close", ok); sock.on("error", ok);
+});
+assert.equal((await fetch(url)).status, 200, "server alive after bad Host");
+// a browser edit built on an old version is refused, not applied
+const cur = (await call("get_diagram")).json;
+let res = await fetch(`${url.origin}/__source?doc=default&t=${t}`, { method: "POST", body: JSON.stringify({ source: cur.source + "\n    Q", client: "x", base: cur.version - 1 }) });
+assert.equal(res.status, 409);
+assert.equal((await call("get_diagram")).json.source, cur.source);
+res = await fetch(`${url.origin}/__source?doc=default&t=${t}`, { method: "POST", body: JSON.stringify({ source: cur.source + "\n    Q", client: "x", base: cur.version }) });
+assert.equal(res.status, 200);
+// names the tools would refuse are refused by the live channel too
+assert.equal((await fetch(`${url.origin}/__events?doc=${encodeURIComponent("my diagram")}&t=${t}`)).status, 400);
+// reading a diagram that doesn't exist doesn't create it
+r = await call("get_diagram", { doc: "nope" });
+assert.ok(r.isError); assert.match(r.content[0].text, /No diagram named "nope"/);
+r = await call("render_diagram", { doc: "nope" });
+assert.ok(r.isError);
+
 const list = (await call("list_diagrams")).json;
 assert.deepEqual(list.diagrams.map((d) => d.doc).sort(), ["default", "f", "seq"]);
 
 await client.close();
+// FLOWMAID_PORT=0 lets the OS pick a port
+const c2 = new Client({ name: "smoke2", version: "0" });
+await c2.connect(new StdioClientTransport({ command: bin, args: [], env: { ...process.env, FLOWMAID_PORT: "0" }, stderr: "pipe" }));
+const u2 = JSON.parse((await c2.callTool({ name: "open_live_view", arguments: { open: false } })).content[0].text).url;
+assert.ok(!u2.includes(":7878/") && !u2.includes(":7999/"), u2);
+assert.equal((await fetch(u2)).status, 200);
+await c2.close();
+
 console.log("smoke: ALL OK");

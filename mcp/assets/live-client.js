@@ -46,6 +46,7 @@ function ready() {
 
 // ── Server → page ──
 let serverSrc = null; // last text the server and this page agreed on
+let serverVersion = null; // its version: a POST built on it is refused if stale
 let applying = false;
 let first = true;
 
@@ -67,29 +68,57 @@ function applyRemote(src) {
 await ready();
 const es = new EventSource(`/__events?${q}`);
 es.addEventListener("open", () => badge.classList.add("on"));
-es.addEventListener("error", () => { badge.classList.remove("on"); badge.textContent = "Reconnecting…"; });
+es.addEventListener("error", () => {
+  badge.classList.remove("on");
+  // A restarted server has a new session token: this page can't rejoin.
+  badge.textContent = es.readyState === EventSource.CLOSED ? "Disconnected — reopen from the agent" : "Reconnecting…";
+});
 es.addEventListener("source", (e) => {
   const m = JSON.parse(e.data);
   badge.classList.add("on");
   const mine = m.origin === `browser:${client}`;
+  // Typing not yet sent is about to be replaced: say so.
+  const lost = !mine && !first && serverSrc !== null && editor.value !== serverSrc && editor.value !== m.source;
   serverSrc = m.source;
+  serverVersion = m.version;
   if (mine) return;
   applyRemote(m.source);
+  if (lost) { flash("Agent edited — your unsent typing was replaced"); first = false; return; }
   if (!first) flash(m.origin === "agent" ? "Agent edited" : m.origin === "file" ? "File changed" : "Updated");
   first = false;
 });
 
 // ── Page → server ──
-let timer = 0;
+let timer = 0, inflight = false, refused = null;
 function push() {
   clearTimeout(timer);
   timer = setTimeout(async () => {
     const source = editor.value;
-    if (source === serverSrc || serverSrc === null) return;
-    serverSrc = source;
+    if (inflight || source === serverSrc || serverSrc === null || source === refused) return;
+    inflight = true;
     try {
-      await fetch(`/__source?${q}`, { method: "POST", body: JSON.stringify({ source, client }), headers: { "content-type": "application/json" } });
-    } catch { /* the SSE reconnect brings the server's copy back */ }
+      const r = await fetch(`/__source?${q}`, {
+        method: "POST",
+        body: JSON.stringify({ source, client, base: serverVersion }),
+        headers: { "content-type": "application/json" },
+      });
+      if (r.ok) {
+        // Only now is it the server's copy too.
+        serverSrc = source;
+        serverVersion = (await r.json()).version;
+        refused = null;
+      } else if (r.status === 409) {
+        // The agent changed it first; its version arrives over SSE.
+        flash("Agent changed it first — your edit was not applied");
+      } else {
+        refused = source; // don't resend the same text; the next edit retries
+        flash(`Not synced (${r.status})`);
+      }
+    } catch {
+      flash("Not synced — server unreachable");
+    } finally {
+      inflight = false;
+    }
   }, 250);
 }
 editor.addEventListener("input", () => { if (!applying) push(); });

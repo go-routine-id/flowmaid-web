@@ -7,6 +7,11 @@ repository = "https://github.com/go-routine-id/flowmaid-web"
 description = "WASM bindings + web playground for the flowmaid diagram engine"
 publish = false # ships as a wasm bundle, not a crates.io library
 
+[workspace]
+# mcp/ is the flowmaid MCP server (native binary); it links this crate's
+# edit module and the same flowmaid engine.
+members = ["mcp"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

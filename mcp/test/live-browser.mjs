@@ -5,12 +5,13 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { bin } from "./bin.mjs";
 
 const { chromium } = createRequire(import.meta.url)("playwright");
 const shots = process.env.SHOTS;
 const client = new Client({ name: "live-test", version: "0" });
 await client.connect(new StdioClientTransport({
-  command: process.execPath, args: [new URL("../server.js", import.meta.url).pathname],
+  command: bin, args: [],
   env: { ...process.env, FLOWMAID_PORT: "7990" }, stderr: "pipe",
 }));
 const call = async (name, args = {}) => {

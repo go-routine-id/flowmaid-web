@@ -1,0 +1,363 @@
+//! flowmaid MCP server (stdio). Gives an agent tools to read, build,
+//! edit and render Mermaid-style diagrams with the flowmaid engine, and
+//! serves the flowmaid playground locally as a live view that stays in
+//! sync both ways with what the agent sees.
+//!
+//! stdout belongs to the MCP protocol: log to stderr only.
+
+mod engine;
+mod live;
+mod ops;
+mod store;
+
+use base64::Engine as _;
+use live::Live;
+use ops::{apply_ops, Op};
+use rmcp::{
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig},
+    schemars::{self, JsonSchema},
+    tool, tool_handler, tool_router, ServerHandler, ServiceExt,
+};
+use serde::Deserialize;
+use serde_json::{json, Map, Value};
+use store::{valid_doc_name, Doc, Store};
+
+const INSTRUCTIONS: &str = "flowmaid renders Mermaid-style diagrams (flowchart/graph, erDiagram, classDiagram, \
+sequenceDiagram, stateDiagram, pie, swimlane, …). Diagrams are named documents (default: \"default\"). Typical loop: \
+get_diagram to learn node/edge ids, edit_diagram with a list of ops (flowcharts) or set_diagram with full Mermaid \
+source (any type), then render_diagram to look at it. open_live_view opens the diagram in the user's browser; it \
+stays in sync both ways, so the user may also edit it there. Call get_diagram again before editing if the user may \
+have changed it (see changed_by / version).";
+
+#[derive(Clone)]
+struct Flowmaid {
+    store: Store,
+    live: Option<Live>,
+    tool_router: ToolRouter<Self>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct DocArg {
+    /// Diagram name (default "default"). Each name is a separate document.
+    doc: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct SetArgs {
+    /// Full Mermaid source, e.g. "flowchart TD\n  A[Start] --> B{OK?}"
+    source: String,
+    /// Diagram name (default "default").
+    doc: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct EditArgs {
+    /// Edits, applied in order, all-or-nothing.
+    ops: Vec<Op>,
+    /// Diagram name (default "default").
+    doc: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum Format {
+    Png,
+    Svg,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct RenderArgs {
+    /// Diagram name (default "default").
+    doc: Option<String>,
+    /// Render this source instead of a stored document.
+    source: Option<String>,
+    /// png (default) or svg.
+    format: Option<Format>,
+    /// PNG scale, 0.5–4 (default 2).
+    scale: Option<f32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct LiveArgs {
+    /// Diagram name (default "default").
+    doc: Option<String>,
+    /// Launch the browser (default true); false just returns the URL.
+    open: Option<bool>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct FileArgs {
+    /// Path of the .mmd file (absolute, or relative to the server's working directory).
+    path: String,
+    /// Diagram name (default "default").
+    doc: Option<String>,
+    /// Initial source when the file does not exist yet.
+    create_with: Option<String>,
+}
+
+fn text(v: impl Into<String>) -> CallToolResult {
+    CallToolResult::success(vec![ContentBlock::text(v.into())])
+}
+
+fn json_result(v: &Value) -> CallToolResult {
+    text(serde_json::to_string_pretty(v).unwrap_or_default())
+}
+
+fn fail(msg: impl Into<String>) -> CallToolResult {
+    CallToolResult::error(vec![ContentBlock::text(msg.into())])
+}
+
+fn doc_name(doc: &Option<String>) -> Result<String, CallToolResult> {
+    let d = doc.clone().unwrap_or_else(|| "default".into());
+    if valid_doc_name(&d) {
+        Ok(d)
+    } else {
+        Err(fail(format!("Bad doc name \"{d}\": use 1–64 letters, digits, _ . -")))
+    }
+}
+
+const MAX_SOURCE: usize = 200_000;
+
+#[tool_router]
+impl Flowmaid {
+    fn new(store: Store, live: Option<Live>) -> Self {
+        Flowmaid { store, live, tool_router: Self::tool_router() }
+    }
+
+    fn snapshot(&self, d: &Doc) -> Value {
+        let mut m = Map::new();
+        m.insert("doc".into(), json!(d.name));
+        m.insert("version".into(), json!(d.version));
+        let by = if d.origin.starts_with("browser") { "user (live view)" } else { d.origin.as_str() };
+        m.insert("changed_by".into(), json!(by));
+        if let Some(f) = &d.file {
+            m.insert("file".into(), json!(f.display().to_string()));
+        }
+        if let Some(l) = &self.live {
+            m.insert("live_url".into(), json!(l.url(&d.name)));
+            m.insert("live_viewers".into(), json!(l.viewers(&d.name)));
+        }
+        m.insert("source".into(), json!(d.source));
+        m.extend(engine::describe(&d.source));
+        Value::Object(m)
+    }
+
+    /// Read access: the doc must exist, except "default" which always does.
+    fn existing(&self, doc: &Option<String>) -> Result<Doc, CallToolResult> {
+        let name = doc_name(doc)?;
+        match self.store.peek(&name) {
+            Some(d) => Ok(d),
+            None if name == "default" => Ok(self.store.get(&name)),
+            None => Err(fail(format!("No diagram named \"{name}\" yet; set_diagram or open_live_view creates it."))),
+        }
+    }
+
+    #[tool(
+        description = "Read a diagram: its Mermaid source plus parsed nodes (id, label, shape, fill, group), edges (from, to, nth, label, style) and groups, the live view URL and who changed it last. Use the ids from here in edit_diagram.",
+        annotations(read_only_hint = true)
+    )]
+    async fn get_diagram(&self, Parameters(a): Parameters<DocArg>) -> CallToolResult {
+        match self.existing(&a.doc) {
+            Ok(d) => json_result(&self.snapshot(&d)),
+            Err(e) => e,
+        }
+    }
+
+    #[tool(
+        description = "Replace a diagram's whole Mermaid source (any diagram type). The source is checked with the engine first; on a parse error nothing changes and the line-numbered error is returned. Open live views update immediately."
+    )]
+    async fn set_diagram(&self, Parameters(a): Parameters<SetArgs>) -> CallToolResult {
+        let name = match doc_name(&a.doc) {
+            Ok(n) => n,
+            Err(e) => return e,
+        };
+        if a.source.len() > MAX_SOURCE {
+            return fail("Source too large (max 200 kB).");
+        }
+        if let Some(e) = engine::parse_error(&a.source) {
+            return fail(format!("Not changed, the source does not parse: {e}"));
+        }
+        let d = self.store.set(&name, &a.source, "agent");
+        json_result(&self.snapshot(&d))
+    }
+
+    #[tool(
+        description = "Apply a list of edits to a flowchart, in order and all-or-nothing: add_node, rename_node, delete_node, connect, update_edge, delete_edge, set_shape, set_color, group, ungroup. Only the touched lines of the Mermaid source are rewritten. Returns the new state, including ids created by add_node / group. Open live views update immediately."
+    )]
+    async fn edit_diagram(&self, Parameters(a): Parameters<EditArgs>) -> CallToolResult {
+        let name = match doc_name(&a.doc) {
+            Ok(n) => n,
+            Err(e) => return e,
+        };
+        if a.ops.is_empty() {
+            return fail("Give at least one op.");
+        }
+        let d = self.store.get(&name);
+        match apply_ops(&d.source, &a.ops) {
+            Ok((src, created)) => {
+                let d = self.store.set(&name, &src, "agent");
+                let mut v = self.snapshot(&d);
+                v.as_object_mut().unwrap().insert("created".into(), json!(created));
+                json_result(&v)
+            }
+            Err(e) => fail(format!("Nothing changed: {e}")),
+        }
+    }
+
+    #[tool(
+        description = "Render a diagram to look at it: PNG (default) or SVG markup. Renders the named document, or `source` if given (without storing it).",
+        annotations(read_only_hint = true)
+    )]
+    async fn render_diagram(&self, Parameters(a): Parameters<RenderArgs>) -> CallToolResult {
+        let src = match &a.source {
+            Some(s) if s.len() > MAX_SOURCE => return fail("Source too large (max 200 kB)."),
+            Some(s) => s.clone(),
+            None => match self.existing(&a.doc) {
+                Ok(d) => d.source,
+                Err(e) => return e,
+            },
+        };
+        let svg = match engine::render_svg(&src) {
+            Ok(s) => s,
+            Err(e) => return fail(e),
+        };
+        if a.format == Some(Format::Svg) {
+            return text(svg);
+        }
+        let scale = a.scale.unwrap_or(2.0).clamp(0.5, 4.0);
+        match engine::render_png(&svg, scale) {
+            Ok(png) => CallToolResult::success(vec![ContentBlock::image(
+                base64::engine::general_purpose::STANDARD.encode(png),
+                "image/png",
+            )]),
+            Err(e) => fail(format!("PNG rendering failed ({e}); ask for format \"svg\" instead.")),
+        }
+    }
+
+    #[tool(
+        description = "Open the diagram in the flowmaid playground in the user's browser. The page stays in sync both ways: your edits show up there at once, and the user's edits on the canvas or in the code panel come back (check get_diagram). Returns the URL so you can share it."
+    )]
+    async fn open_live_view(&self, Parameters(a): Parameters<LiveArgs>) -> CallToolResult {
+        let Some(live) = &self.live else {
+            return fail("The live view server could not start (see the server's stderr).");
+        };
+        let name = match doc_name(&a.doc) {
+            Ok(n) => n,
+            Err(e) => return e,
+        };
+        self.store.get(&name);
+        let url = live.url(&name);
+        let open = a.open.unwrap_or(true);
+        if open {
+            open_browser(&url);
+        }
+        json_result(&json!({ "url": url, "doc": name, "opened": open }))
+    }
+
+    #[tool(
+        description = "Bind a diagram to a .mmd file on disk: its content is loaded (or the file is created), every later edit is written back, and changes made to the file by others flow in (and on to live views)."
+    )]
+    async fn open_file(&self, Parameters(a): Parameters<FileArgs>) -> CallToolResult {
+        let name = match doc_name(&a.doc) {
+            Ok(n) => n,
+            Err(e) => return e,
+        };
+        if let Some(c) = &a.create_with {
+            if let Some(e) = engine::parse_error(c) {
+                return fail(format!("create_with does not parse: {e}"));
+            }
+        }
+        match self.store.bind(&name, std::path::Path::new(&a.path), a.create_with.as_deref()) {
+            Ok(d) => json_result(&self.snapshot(&d)),
+            Err(e) => fail(format!("Could not open {}: {e}", a.path)),
+        }
+    }
+
+    #[tool(
+        description = "List the diagram documents in this session with their type, version, bound file and live URL.",
+        annotations(read_only_hint = true)
+    )]
+    async fn list_diagrams(&self) -> CallToolResult {
+        let diagrams: Vec<Value> = self
+            .store
+            .list()
+            .iter()
+            .map(|d| {
+                let mut m = Map::new();
+                m.insert("doc".into(), json!(d.name));
+                m.insert("version".into(), json!(d.version));
+                m.insert("type".into(), json!(engine::diagram_type(&d.source)));
+                if let Some(f) = &d.file {
+                    m.insert("file".into(), json!(f.display().to_string()));
+                }
+                if let Some(l) = &self.live {
+                    m.insert("live_url".into(), json!(l.url(&d.name)));
+                }
+                Value::Object(m)
+            })
+            .collect();
+        json_result(&json!({ "engine": flowmaid_web::engine_version(), "diagrams": diagrams }))
+    }
+}
+
+#[tool_handler(router = self.tool_router)]
+impl ServerHandler for Flowmaid {
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(Implementation::new("flowmaid", env!("CARGO_PKG_VERSION")))
+            .with_instructions(INSTRUCTIONS)
+    }
+}
+
+fn open_browser(url: &str) {
+    let mut cmd = if cfg!(target_os = "macos") {
+        let mut c = std::process::Command::new("open");
+        c.arg(url);
+        c
+    } else if cfg!(windows) {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/c", "start", "", url]);
+        c
+    } else {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(url);
+        c
+    };
+    let _ = cmd
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+}
+
+#[tokio::main]
+async fn main() {
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("flowmaid-mcp {} (flowmaid engine {})", env!("CARGO_PKG_VERSION"), flowmaid_web::engine_version());
+        return;
+    }
+    let store = Store::new();
+    store.spawn_file_poller();
+    let live = match live::start(store.clone()).await {
+        Ok(l) => {
+            eprintln!("flowmaid-mcp: live view at {}", l.url("default"));
+            Some(l)
+        }
+        Err(e) => {
+            eprintln!("flowmaid-mcp: live view unavailable: {e}");
+            None
+        }
+    };
+    let server = match Flowmaid::new(store, live).serve(rmcp::transport::stdio()).await {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("flowmaid-mcp: {e}");
+            std::process::exit(1);
+        }
+    };
+    let _ = server.waiting().await;
+    // The live view would keep the process alive; a stdio server ends
+    // with its client.
+    std::process::exit(0);
+}
