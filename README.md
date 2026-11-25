@@ -35,7 +35,7 @@ The **Edit** button (`V`) turns these canvas gestures off and on; it is on by de
 [`mcp/`](mcp/) is a Rust MCP server that gives an AI agent tools to read, edit and render diagrams with this engine, and serves this playground locally as a live view that stays in sync both ways with what the agent sees. The edit logic both share lives in [`src/edit.rs`](src/edit.rs) (wasm for the page, native for the server). Setup and tools: [mcp/README.md](mcp/README.md).
 
 ```bash
-cargo install --git https://github.com/go-routine-id/flowmaid-web flowmaid-mcp
+cargo install --locked --git https://github.com/go-routine-id/flowmaid-web flowmaid-mcp
 claude mcp add flowmaid -- flowmaid-mcp
 ```
 

@@ -10,7 +10,7 @@ One self-contained binary: the engine runs natively, the edit logic is the same 
 ## Install
 
 ```bash
-cargo install --git https://github.com/go-routine-id/flowmaid-web flowmaid-mcp
+cargo install --locked --git https://github.com/go-routine-id/flowmaid-web flowmaid-mcp
 ```
 
 (or `cargo build -p flowmaid-mcp --release` in a checkout; the binary lands in `target/release/`).

@@ -42,6 +42,10 @@ fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
+fn starter(name: &str) -> Doc {
+    Doc { name: name.to_string(), source: STARTER.into(), version: 1, file: None, origin: "init".into() }
+}
+
 /// Same rule as the tools' `doc` argument.
 pub fn valid_doc_name(name: &str) -> bool {
     (1..=64).contains(&name.len()) && name.bytes().all(|c| c.is_ascii_alphanumeric() || b"_.-".contains(&c))
@@ -60,15 +64,7 @@ impl Store {
     /// A diagram, created with the starter source if new.
     pub fn get(&self, name: &str) -> Doc {
         let mut docs = self.docs.lock().unwrap();
-        docs.entry(name.to_string())
-            .or_insert_with(|| Doc {
-                name: name.to_string(),
-                source: STARTER.into(),
-                version: 1,
-                file: None,
-                origin: "init".into(),
-            })
-            .clone()
+        docs.entry(name.to_string()).or_insert_with(|| starter(name)).clone()
     }
 
     /// A diagram if it exists, without creating it.
@@ -83,35 +79,55 @@ impl Store {
     /// Replace a diagram's source; writes a bound file unless the change
     /// came from that file.
     pub fn set(&self, name: &str, source: &str, origin: &str) -> Doc {
-        self.get(name);
+        self.set_if(name, source, origin, None).unwrap_or_else(|cur| cur)
+    }
+
+    /// Replace the source only if it is still at `base` (an edit built on
+    /// that version); Err(current) when someone changed it since. Check,
+    /// change and file write happen under one lock, so no other change
+    /// (or the file poller) can slip in between.
+    pub fn set_if(&self, name: &str, source: &str, origin: &str, base: Option<u64>) -> Result<Doc, Doc> {
         let d = {
             let mut docs = self.docs.lock().unwrap();
-            let d = docs.get_mut(name).unwrap();
+            let d = docs.entry(name.to_string()).or_insert_with(|| starter(name));
+            if base.is_some_and(|b| b != d.version) {
+                return Err(d.clone());
+            }
             if d.source == source {
-                return d.clone();
+                return Ok(d.clone());
             }
             d.source = source.to_string();
             d.version += 1;
             d.origin = origin.to_string();
+            if let (Some(f), false) = (&d.file, origin == "file") {
+                if let Err(e) = write_atomic(f, source) {
+                    eprintln!("flowmaid-mcp: write {} failed: {e}", f.display());
+                }
+            }
             d.clone()
         };
-        if let (Some(f), false) = (&d.file, origin == "file") {
-            if let Err(e) = write_atomic(f, source) {
-                eprintln!("flowmaid-mcp: write {} failed: {e}", f.display());
-            }
-        }
         let _ = self.tx.send(Change { doc: d.clone() });
-        d
+        Ok(d)
     }
 
-    /// Replace the source only if it is still at `base` (a browser edit
-    /// built on that version); Err(current) when someone changed it since.
-    pub fn set_if(&self, name: &str, source: &str, origin: &str, base: Option<u64>) -> Result<Doc, Doc> {
-        let cur = self.get(name);
-        if base.is_some_and(|b| b != cur.version) {
-            return Err(cur);
-        }
-        Ok(self.set(name, source, origin))
+    /// Take a bound file's current text if it differs. Read under the
+    /// lock: our own writes happen under it too, so a half-done agent
+    /// edit is never mistaken for someone else's change.
+    fn sync_from_file(&self, name: &str) {
+        let d = {
+            let mut docs = self.docs.lock().unwrap();
+            let Some(d) = docs.get_mut(name) else { return };
+            let Some(f) = &d.file else { return };
+            let Ok(text) = std::fs::read_to_string(f) else { return };
+            if text == d.source {
+                return;
+            }
+            d.source = text;
+            d.version += 1;
+            d.origin = "file".into();
+            d.clone()
+        };
+        let _ = self.tx.send(Change { doc: d });
     }
 
     /// Bind a diagram to a file: load it (or create it from `create_with`
@@ -138,10 +154,8 @@ impl Store {
             loop {
                 tick.tick().await;
                 for d in store.list() {
-                    let Some(f) = &d.file else { continue };
-                    let Ok(text) = std::fs::read_to_string(f) else { continue };
-                    if text != d.source {
-                        store.set(&d.name, &text, "file");
+                    if d.file.is_some() {
+                        store.sync_from_file(&d.name);
                     }
                 }
             }

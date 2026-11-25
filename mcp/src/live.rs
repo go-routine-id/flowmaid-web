@@ -155,11 +155,14 @@ async fn events(
     let guard = Viewer { doc: doc.clone(), map: app.live.viewers.clone() };
     let first = tokio_stream::once(Ok(source_event(&app.store.get(&doc))));
     let name = doc.clone();
+    let store = app.store.clone();
     let rest = BroadcastStream::new(app.store.subscribe()).filter_map(move |c| {
         let _keep = &guard;
         match c {
             Ok(c) if c.doc.name == name => Some(Ok(source_event(&c.doc))),
-            _ => None,
+            Ok(_) => None,
+            // Fell behind and missed changes: send where things stand now.
+            Err(_) => Some(Ok(source_event(&store.get(&name)))),
         }
     });
     Ok(Sse::new(first.chain(rest)).keep_alive(KeepAlive::default()))

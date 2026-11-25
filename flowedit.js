@@ -4,7 +4,8 @@
 // server and anything else share one implementation; this module is
 // the JS face of its wasm build, keeping the API the page was written
 // against. Initialise the wasm module (pkg/flowmaid_web.js) before
-// calling anything here.
+// calling anything here. (parseFlow, which exposed the JS parser's
+// internal line/segment structure, is gone with that parser.)
 import * as w from "./pkg/flowmaid_web.js";
 
 const ids = (list) => list.join("\n");
@@ -83,6 +84,14 @@ export const ungroup = (src, gid) => w.fe_ungroup(src, gid);
 
 /** Shapes the engine draws distinctly: { key: [open, close] }. */
 export const nodeShapes = () => JSON.parse(w.fe_node_shapes());
+
+// Kept for pages that imported the constant: available before the wasm
+// is initialised, and checked against nodeShapes() by the tests.
+export const NODE_SHAPES = Object.freeze({
+  rect: ["[", "]"], rounded: ["(", ")"], stadium: ["([", "])"], subroutine: ["[[", "]]"],
+  cylinder: ["[(", ")]"], circle: ["((", "))"], doublecircle: ["(((", ")))"],
+  diamond: ["{", "}"], hexagon: ["{{", "}}"], parallelogram: ["[/", "/]"], parallelogramalt: ["[\\", "\\]"],
+});
 
 /** Current shape key of a node ("rect" when it has no brackets), or null. */
 export const nodeShape = (src, id) => w.fe_node_shape(src, id) ?? null;

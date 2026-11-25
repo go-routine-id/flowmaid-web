@@ -193,16 +193,23 @@ impl Flowmaid {
         if a.ops.is_empty() {
             return fail("Give at least one op.");
         }
-        let d = self.store.get(&name);
-        match apply_ops(&d.source, &a.ops) {
-            Ok((src, created)) => {
-                let d = self.store.set(&name, &src, "agent");
+        // Apply to the version read, and store only if it is still current:
+        // a user editing in the live view meanwhile is not overwritten.
+        // Ops name nodes by id, so re-applying them to the newer text is
+        // what the agent meant; a few attempts cover a busy typist.
+        for _ in 0..5 {
+            let d = self.store.get(&name);
+            let (src, created) = match apply_ops(&d.source, &a.ops) {
+                Ok(r) => r,
+                Err(e) => return fail(format!("Nothing changed: {e}")),
+            };
+            if let Ok(d) = self.store.set_if(&name, &src, "agent", Some(d.version)) {
                 let mut v = self.snapshot(&d);
                 v.as_object_mut().unwrap().insert("created".into(), json!(created));
-                json_result(&v)
+                return json_result(&v);
             }
-            Err(e) => fail(format!("Nothing changed: {e}")),
         }
+        fail("Nothing changed: the diagram kept changing under the edit (the user is editing it); call get_diagram and try again.")
     }
 
     #[tool(

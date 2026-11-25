@@ -319,25 +319,22 @@ fn edge_text(s: &str, i: usize) -> Option<usize> {
             _ => {}
         }
         let eol = find_from(s, "\n", q).unwrap_or(s.len());
-        let w1 = ws_len(s, q);
-        for ws1 in (0..=w1).rev() {
-            let m0 = q + ws1;
-            let mut mid_end = m0;
-            loop {
-                let w2 = ws_len(s, mid_end);
-                for ws2 in (0..=w2).rev() {
-                    for end in closer_ends(s, mid_end + ws2) {
-                        // (?=[ \t]|[\p{L}\p{N}_"])
-                        if char_at(s, end).is_some_and(|c| c == ' ' || c == '\t' || c == '"' || is_id_char(c)) {
-                            return Some(end);
-                        }
-                    }
+        // `[ \t]*[^\n]*?[ \t]*CLOSER`, without the regex's backtracking:
+        // a closer starts with - = or ., never a space, so only the longest
+        // leading and trailing space runs can match; trying the shorter
+        // ones (as a regex does) changes nothing but costs cubic time.
+        let m0 = q + ws_len(s, q);
+        // Past the last - = . on the line no closer can start.
+        let Some(last) = s[m0..eol].rfind(['-', '=', '.']).map(|k| m0 + k) else { continue };
+        let mut mid_end = m0;
+        while mid_end <= last {
+            for end in closer_ends(s, mid_end + ws_len(s, mid_end)) {
+                // (?=[ \t]|[\p{L}\p{N}_"])
+                if char_at(s, end).is_some_and(|c| c == ' ' || c == '\t' || c == '"' || is_id_char(c)) {
+                    return Some(end);
                 }
-                if mid_end >= eol {
-                    break;
-                }
-                mid_end += char_at(s, mid_end).map_or(1, char::len_utf8);
             }
+            mid_end += char_at(s, mid_end).map_or(1, char::len_utf8);
         }
     }
     None
@@ -1180,21 +1177,29 @@ fn text_op(raw: &str) -> Option<(String, String)> {
         };
         let q = p + 2;
         let w1 = space_len(raw, q);
-        for ws1 in (1..=w1).rev() {
-            let m0 = q + ws1;
-            let mut mid_end = m0;
-            while mid_end <= raw.len() {
-                let w2 = space_len(raw, mid_end);
-                for ws2 in (1..=w2).rev() {
-                    if full_closer(mid_end + ws2) {
-                        let closer = &raw[mid_end + ws2..];
-                        return Some((format!("{}{open}{closer}", &raw[..p]), raw[m0..mid_end].to_string()));
-                    }
-                }
-                if mid_end == raw.len() {
-                    break;
-                }
-                mid_end += char_at(raw, mid_end).map_or(1, char::len_utf8);
+        if w1 == 0 {
+            continue;
+        }
+        let found = |m0: usize, mid_end: usize| {
+            let c = mid_end + space_len(raw, mid_end);
+            (c > mid_end && full_closer(c))
+                .then(|| (format!("{}{open}{}", &raw[..p], &raw[c..]), raw[m0..mid_end].to_string()))
+        };
+        // As in edge_text: only the longest space runs can match...
+        let m0 = q + w1;
+        let mut mid_end = m0;
+        while mid_end < raw.len() {
+            if let Some(r) = found(m0, mid_end) {
+                return Some(r);
+            }
+            mid_end += char_at(raw, mid_end).map_or(1, char::len_utf8);
+        }
+        // ...except an empty text (`--  -->`): the regex gives the last
+        // leading space to the trailing `\s+`.
+        if w1 >= 2 {
+            let last_ws = raw[..q + w1].char_indices().next_back().map_or(m0, |(k, _)| k);
+            if let Some(r) = found(last_ws, last_ws) {
+                return Some(r);
             }
         }
     }

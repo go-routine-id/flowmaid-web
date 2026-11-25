@@ -139,4 +139,5 @@ assert.equal(fe.renameGroup(s, "G1", "In put (x)").includes('subgraph G1 ["In pu
   const two = fe.setNodeShape(S, ["A", "D"], "rounded");
   assert.equal(fe.nodeShape(two, "A"), "rounded"); assert.equal(fe.nodeShape(two, "D"), "rounded");
 }
+assert.deepEqual(fe.NODE_SHAPES, fe.nodeShapes(), "NODE_SHAPES matches the Rust table");
 console.log("ALL OK");
