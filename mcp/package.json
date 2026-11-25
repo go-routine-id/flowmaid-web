@@ -1,0 +1,23 @@
+{
+  "name": "flowmaid-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for flowmaid: let an AI agent build and edit Mermaid-style diagrams, with a live playground that stays in sync both ways.",
+  "type": "module",
+  "bin": { "flowmaid-mcp": "server.js" },
+  "files": ["server.js", "src/", "web/", "README.md"],
+  "scripts": {
+    "prepack": "node scripts/copy-assets.js",
+    "test": "node test/smoke.mjs"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.1.0"
+  },
+  "optionalDependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  },
+  "keywords": ["mcp", "mermaid", "flowchart", "diagram", "flowmaid"],
+  "license": "GPL-3.0-or-later",
+  "repository": { "type": "git", "url": "https://github.com/go-routine-id/flowmaid-web", "directory": "mcp" }
+}
