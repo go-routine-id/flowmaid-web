@@ -123,7 +123,7 @@ assert.equal(fe.renameGroup(s, "G1", "In put (x)").includes('subgraph G1 ["In pu
   const shapeOf = (src, label) => { const s = m.render_svg(src); const g = s.match(new RegExp(`<g><title>${label.replace(/[()]/g, "\\$&")}</title>\\s*<(\\w+)([^>]*)>`)); return g && (g[1] + (g[1] === "rect" ? ":" + g[2].match(/rx="([\d.]+)"/)[1] : "")); };
   assert.equal(fe.nodeShape(S, "A"), "rect"); assert.equal(fe.nodeShape(S, "B"), "rect");
   assert.equal(fe.nodeShape(S, "C"), "stadium"); assert.equal(fe.nodeShape(S, "D"), "hexagon"); assert.equal(fe.nodeShape(S, "E"), "parallelogram");
-  for (const k of Object.keys(fe.NODE_SHAPES)) {
+  for (const k of Object.keys(fe.nodeShapes())) {
     for (const id of ["A", "B", "C", "D", "F"]) {
       const out = fe.setNodeShape(S, [id], k);
       m.node_keys(out);

@@ -7,6 +7,9 @@
 use flowmaid::model::Document;
 use wasm_bindgen::prelude::*;
 
+pub mod edit;
+mod edit_bindings;
+
 fn parse(source: &str) -> Result<Document, JsError> {
     flowmaid::parser::parse_document(source).map_err(|e| JsError::new(&e.to_string()))
 }
@@ -249,7 +252,14 @@ fn advance_scene_to_json(scene: &flowmaid::AdvanceScene) -> String {
 /// preserve dragged positions across text edits.
 #[wasm_bindgen]
 pub fn node_keys(source: &str) -> Result<String, JsError> {
-    Ok(match parse(source)? {
+    node_keys_impl(source).map_err(|e| JsError::new(&e))
+}
+
+/// [`node_keys`] for native callers (the MCP server): plain errors, no
+/// JS types.
+pub fn node_keys_impl(source: &str) -> Result<String, String> {
+    let doc = flowmaid::parser::parse_document(source).map_err(|e| e.to_string())?;
+    Ok(match doc {
         // State diagrams share the flowchart Graph — same drag model.
         Document::Flowchart(g) | Document::State(g) => g
             .nodes

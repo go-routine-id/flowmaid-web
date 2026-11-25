@@ -14,6 +14,60 @@ export function auto_positions(source: string): Float64Array;
  */
 export function engine_version(): string;
 
+export function fe_add_edge(src: string, from: string, to: string, op: string): string;
+
+export function fe_add_node(src: string, id: string, label: string): string;
+
+export function fe_build_op(start: string, kind: string, end: string, label?: string | null): string;
+
+export function fe_delete_edge(src: string, from: string, to: string, nth: number): string;
+
+export function fe_delete_node(src: string, id: string): string;
+
+export function fe_edge_list(src: string): string;
+
+export function fe_edge_op(src: string, from: string, to: string, nth: number): string | undefined;
+
+export function fe_format_label(label: string): string;
+
+export function fe_fresh_id(src: string, taken: string, prefix: string): string;
+
+export function fe_group_nodes(src: string, ids_joined: string, gid: string, title: string): string;
+
+export function fe_is_flowchart(src: string): boolean;
+
+export function fe_node_fill(src: string, id: string): string | undefined;
+
+export function fe_node_label(src: string, id: string): string;
+
+export function fe_node_shape(src: string, id: string): string | undefined;
+
+export function fe_node_shapes(): string;
+
+export function fe_parse_op(raw: string): string;
+
+export function fe_rename_group(src: string, gid: string, title: string): string;
+
+export function fe_rename_node(src: string, id: string, label: string): string;
+
+export function fe_reverse_edge(src: string, from: string, to: string, nth: number): string;
+
+export function fe_set_edge_kind(src: string, from: string, to: string, nth: number, kind: string): string;
+
+export function fe_set_edge_label(src: string, from: string, to: string, nth: number, label: string): string;
+
+export function fe_set_node_shape(src: string, ids_joined: string, key: string): string;
+
+/**
+ * `props`: entries `key\x1fvalue` joined by `\x1e`; a value of `\0`
+ * removes the key. `clear` (props ignored) removes fill/stroke/color.
+ */
+export function fe_set_node_style(src: string, ids_joined: string, props: string, clear: boolean): string;
+
+export function fe_subgraphs(src: string): string;
+
+export function fe_ungroup(src: string, gid: string): string;
+
 /**
  * Layout an advance / swimlane diagram from JSON and return its
  * geometry as a JSON string: width, height, lanes, nodes, and edges
@@ -100,6 +154,31 @@ export interface InitOutput {
     readonly render_routed: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly render_svg: (a: number, b: number) => [number, number, number, number];
     readonly render_svg_transparent: (a: number, b: number) => [number, number, number, number];
+    readonly fe_add_edge: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
+    readonly fe_add_node: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+    readonly fe_build_op: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
+    readonly fe_delete_edge: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
+    readonly fe_delete_node: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly fe_edge_list: (a: number, b: number) => [number, number];
+    readonly fe_edge_op: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
+    readonly fe_format_label: (a: number, b: number) => [number, number];
+    readonly fe_fresh_id: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+    readonly fe_group_nodes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
+    readonly fe_is_flowchart: (a: number, b: number) => number;
+    readonly fe_node_fill: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly fe_node_label: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly fe_node_shape: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly fe_node_shapes: () => [number, number];
+    readonly fe_parse_op: (a: number, b: number) => [number, number];
+    readonly fe_rename_group: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+    readonly fe_rename_node: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+    readonly fe_reverse_edge: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
+    readonly fe_set_edge_kind: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
+    readonly fe_set_edge_label: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number];
+    readonly fe_set_node_shape: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+    readonly fe_set_node_style: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
+    readonly fe_subgraphs: (a: number, b: number) => [number, number];
+    readonly fe_ungroup: (a: number, b: number, c: number, d: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
