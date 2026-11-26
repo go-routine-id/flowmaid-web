@@ -28,7 +28,8 @@ sequenceDiagram, stateDiagram, pie, swimlane, …). Diagrams are named documents
 get_diagram to learn node/edge ids, edit_diagram with a list of ops (flowcharts) or set_diagram with full Mermaid \
 source (any type), then render_diagram to look at it. open_live_view opens the diagram in the user's browser; it \
 stays in sync both ways, so the user may also edit it there. Call get_diagram again before editing if the user may \
-have changed it (see changed_by / version).";
+have changed it (see changed_by / version). When the user points at something on the canvas (\"this node\", \"the \
+selected ones\"), call get_selection.";
 
 #[derive(Clone)]
 struct Flowmaid {
@@ -117,6 +118,13 @@ fn doc_name(doc: &Option<String>) -> Result<String, CallToolResult> {
     }
 }
 
+/// The live view's selection for a doc, as tools report it.
+fn selection_json(live: &Live, doc: &str) -> Value {
+    match live.selection(doc) {
+        Some(s) => json!({ "selected": s.selection, "version": s.version, "at_unix_ms": s.at as u64 }),
+        None => json!({ "selected": null }),
+    }
+}
 
 #[tool_router]
 impl Flowmaid {
@@ -136,6 +144,7 @@ impl Flowmaid {
         if let Some(l) = &self.live {
             m.insert("live_url".into(), json!(l.url(&d.name)));
             m.insert("live_viewers".into(), json!(l.viewers(&d.name)));
+            m.insert("selection".into(), selection_json(l, &d.name));
         }
         m.insert("source".into(), json!(d.source));
         m.extend(engine::describe(&d.source));
@@ -161,6 +170,26 @@ impl Flowmaid {
             Ok(d) => json_result(&self.snapshot(&d)),
             Err(e) => e,
         }
+    }
+
+    #[tool(
+        description = "What the user has selected on the live view canvas right now: a node ({type: node, id}), several nodes ({type: nodes, ids}) or an edge ({type: edge, from, to, nth}), or null. Use it when the user says \"this node\" or \"the selected ones\". Selecting needs edit mode on in the page (flowcharts). `version` is the diagram version the page showed; if it is older than get_diagram's, the ids may be stale.",
+        annotations(read_only_hint = true)
+    )]
+    async fn get_selection(&self, Parameters(a): Parameters<DocArg>) -> CallToolResult {
+        let Some(live) = &self.live else {
+            return fail("The live view server could not start (see the server's stderr).");
+        };
+        let d = match self.existing(&a.doc) {
+            Ok(d) => d,
+            Err(e) => return e,
+        };
+        let mut v = selection_json(live, &d.name);
+        let m = v.as_object_mut().unwrap();
+        m.insert("doc".into(), json!(d.name));
+        m.insert("diagram_version".into(), json!(d.version));
+        m.insert("live_viewers".into(), json!(live.viewers(&d.name)));
+        json_result(&v)
     }
 
     #[tool(
