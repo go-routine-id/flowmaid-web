@@ -186,3 +186,37 @@ pub fn fe_node_shape(src: &str, id: &str) -> Option<String> {
 pub fn fe_set_node_shape(src: &str, ids_joined: &str, key: &str) -> String {
     edit::set_node_shape(src, &ids(ids_joined), key)
 }
+
+/// `[[id, x, y], …]`
+#[wasm_bindgen]
+pub fn fe_read_positions(src: &str) -> String {
+    let items: Vec<String> = edit::read_positions(src).iter().map(|(id, x, y)| format!("[{},{x},{y}]", q(id))).collect();
+    format!("[{}]", items.join(","))
+}
+
+/// `pos`: entries `id\x1fx\x1fy` joined by `\x1e`.
+#[wasm_bindgen]
+pub fn fe_write_positions(src: &str, pos: &str) -> String {
+    let parsed: Vec<(String, f64, f64)> = pos
+        .split('\x1e')
+        .filter_map(|e| {
+            let mut it = e.split('\x1f');
+            let (id, x, y) = (it.next()?, it.next()?.parse().ok()?, it.next()?.parse().ok()?);
+            Some((id.to_string(), x, y))
+        })
+        .collect();
+    edit::write_positions(src, &parsed)
+}
+
+#[wasm_bindgen]
+pub fn fe_extract_nodes(src: &str, ids_joined: &str) -> String {
+    edit::extract_nodes(src, &ids(ids_joined))
+}
+
+/// `{"src": …, "map": [[snippet id, new id], …]}`
+#[wasm_bindgen]
+pub fn fe_paste_nodes(src: &str, snippet: &str) -> String {
+    let (out, map) = edit::paste_nodes(src, snippet);
+    let m: Vec<String> = map.iter().map(|(a, b)| format!("[{},{}]", q(a), q(b))).collect();
+    format!(r#"{{"src":{},"map":[{}]}}"#, q(&out), m.join(","))
+}

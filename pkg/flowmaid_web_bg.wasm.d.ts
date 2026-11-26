@@ -20,6 +20,7 @@ export const fe_delete_edge: (a: number, b: number, c: number, d: number, e: num
 export const fe_delete_node: (a: number, b: number, c: number, d: number) => [number, number];
 export const fe_edge_list: (a: number, b: number) => [number, number];
 export const fe_edge_op: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
+export const fe_extract_nodes: (a: number, b: number, c: number, d: number) => [number, number];
 export const fe_format_label: (a: number, b: number) => [number, number];
 export const fe_fresh_id: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
 export const fe_group_nodes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
@@ -29,6 +30,8 @@ export const fe_node_label: (a: number, b: number, c: number, d: number) => [num
 export const fe_node_shape: (a: number, b: number, c: number, d: number) => [number, number];
 export const fe_node_shapes: () => [number, number];
 export const fe_parse_op: (a: number, b: number) => [number, number];
+export const fe_paste_nodes: (a: number, b: number, c: number, d: number) => [number, number];
+export const fe_read_positions: (a: number, b: number) => [number, number];
 export const fe_rename_group: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
 export const fe_rename_node: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
 export const fe_reverse_edge: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
@@ -38,6 +41,7 @@ export const fe_set_node_shape: (a: number, b: number, c: number, d: number, e: 
 export const fe_set_node_style: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
 export const fe_subgraphs: (a: number, b: number) => [number, number];
 export const fe_ungroup: (a: number, b: number, c: number, d: number) => [number, number];
+export const fe_write_positions: (a: number, b: number, c: number, d: number) => [number, number];
 export const __wbindgen_externrefs: WebAssembly.Table;
 export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

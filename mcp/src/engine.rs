@@ -19,9 +19,34 @@ pub fn render_svg(src: &str) -> Result<String, String> {
         flowmaid::render_advance_svg(src).map_err(|e| e.to_string())
     } else if is_swimlane(src) {
         flowmaid::render_advance_text_svg(src).map_err(|e| e.to_string())
+    } else if let Some(svg) = render_with_layout(src) {
+        Ok(svg)
     } else {
         flowmaid::render_svg(src).map_err(|e| e.to_string())
     }
+}
+
+/// A diagram with a layout saved in the browser (`%% flowmaid:pos`
+/// lines) renders as the user arranged it; nodes without a saved spot
+/// keep their automatic one.
+fn render_with_layout(src: &str) -> Option<String> {
+    if !src.contains("%% flowmaid:pos") {
+        return None;
+    }
+    let saved = edit::read_positions(src);
+    let keys = node_ids(src);
+    let auto = flowmaid_web::auto_positions_impl(src).ok()?;
+    if keys.is_empty() || auto.len() != keys.len() * 2 {
+        return None;
+    }
+    let mut pos = Vec::with_capacity(auto.len());
+    for (i, k) in keys.iter().enumerate() {
+        match saved.iter().rev().find(|(id, _, _)| id == k) {
+            Some((_, x, y)) => pos.extend([*x, *y]),
+            None => pos.extend([auto[i * 2], auto[i * 2 + 1]]),
+        }
+    }
+    flowmaid_web::routed_impl(src, &pos).ok()
 }
 
 /// None when the source parses, else the engine's error message.
@@ -156,4 +181,23 @@ pub fn render_png(svg: &str, scale: f32) -> Result<Vec<u8>, String> {
     pixmap.fill(resvg::tiny_skia::Color::WHITE);
     resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
     pixmap.encode_png().map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn renders_a_saved_layout() {
+        let src = "flowchart TD\n    A --> B\n";
+        let auto = render_svg(src).unwrap();
+        let moved = render_svg(&format!("{src}    %% flowmaid:pos B=900,700\n")).unwrap();
+        assert_ne!(auto, moved);
+        // Same as the playground: the routed renderer with those centres.
+        let a = flowmaid_web::auto_positions_impl(src).unwrap();
+        let want = flowmaid_web::routed_impl(&format!("{src}    %% flowmaid:pos B=900,700\n"), &[a[0], a[1], 900.0, 700.0]).unwrap();
+        assert_eq!(moved, want);
+        // Unknown ids in the layout are ignored.
+        assert!(render_svg(&format!("{src}    %% flowmaid:pos Z=1,2\n")).is_ok());
+    }
 }

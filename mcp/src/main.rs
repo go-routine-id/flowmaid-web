@@ -164,7 +164,7 @@ impl Flowmaid {
     }
 
     #[tool(
-        description = "Replace a diagram's whole Mermaid source (any diagram type). The source is checked with the engine first; on a parse error nothing changes and the line-numbered error is returned. Open live views update immediately."
+        description = "Replace a diagram's whole Mermaid source (any diagram type). The source is checked with the engine first; on a parse error nothing changes and the line-numbered error is returned. Open live views update immediately. A `%% flowmaid:pos id=x,y …` comment line is the layout the user arranged in the browser: keep it (and the ids) to keep their layout; leave it out for an automatic one."
     )]
     async fn set_diagram(&self, Parameters(a): Parameters<SetArgs>) -> CallToolResult {
         let name = match doc_name(&a.doc) {

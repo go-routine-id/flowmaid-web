@@ -98,3 +98,25 @@ export const nodeShape = (src, id) => w.fe_node_shape(src, id) ?? null;
 
 /** Give nodes another shape, keeping their labels. */
 export const setNodeShape = (src, list, key) => w.fe_set_node_shape(src, ids(list), key);
+
+// ── Saved layout (`%% flowmaid:pos` lines) ──
+
+/** Saved node positions: Map id → [x, y]. */
+export const readPositions = (src) => new Map(JSON.parse(w.fe_read_positions(src)).map(([id, x, y]) => [id, [x, y]]));
+
+/** Replace the saved positions (Map or [id, [x, y]] entries); empty removes them. */
+export function writePositions(src, pos) {
+  const enc = [...pos].map(([id, [x, y]]) => `${id}\x1f${x}\x1f${y}`).join("\x1e");
+  return w.fe_write_positions(src, enc);
+}
+
+// ── Copy / paste ──
+
+/** Mermaid lines for these nodes, the edges among them and their style lines. */
+export const extractNodes = (src, list) => w.fe_extract_nodes(src, ids(list));
+
+/** Append a snippet, renaming taken ids: { src, map: Map snippet id → new id }. */
+export function pasteNodes(src, snippet) {
+  const r = JSON.parse(w.fe_paste_nodes(src, snippet));
+  return { src: r.src, map: new Map(r.map) };
+}

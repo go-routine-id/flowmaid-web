@@ -28,6 +28,8 @@ export function fe_edge_list(src: string): string;
 
 export function fe_edge_op(src: string, from: string, to: string, nth: number): string | undefined;
 
+export function fe_extract_nodes(src: string, ids_joined: string): string;
+
 export function fe_format_label(label: string): string;
 
 export function fe_fresh_id(src: string, taken: string, prefix: string): string;
@@ -45,6 +47,16 @@ export function fe_node_shape(src: string, id: string): string | undefined;
 export function fe_node_shapes(): string;
 
 export function fe_parse_op(raw: string): string;
+
+/**
+ * `{"src": …, "map": [[snippet id, new id], …]}`
+ */
+export function fe_paste_nodes(src: string, snippet: string): string;
+
+/**
+ * `[[id, x, y], …]`
+ */
+export function fe_read_positions(src: string): string;
 
 export function fe_rename_group(src: string, gid: string, title: string): string;
 
@@ -67,6 +79,11 @@ export function fe_set_node_style(src: string, ids_joined: string, props: string
 export function fe_subgraphs(src: string): string;
 
 export function fe_ungroup(src: string, gid: string): string;
+
+/**
+ * `pos`: entries `id\x1fx\x1fy` joined by `\x1e`.
+ */
+export function fe_write_positions(src: string, pos: string): string;
 
 /**
  * Layout an advance / swimlane diagram from JSON and return its
@@ -161,6 +178,7 @@ export interface InitOutput {
     readonly fe_delete_node: (a: number, b: number, c: number, d: number) => [number, number];
     readonly fe_edge_list: (a: number, b: number) => [number, number];
     readonly fe_edge_op: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
+    readonly fe_extract_nodes: (a: number, b: number, c: number, d: number) => [number, number];
     readonly fe_format_label: (a: number, b: number) => [number, number];
     readonly fe_fresh_id: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly fe_group_nodes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
@@ -170,6 +188,8 @@ export interface InitOutput {
     readonly fe_node_shape: (a: number, b: number, c: number, d: number) => [number, number];
     readonly fe_node_shapes: () => [number, number];
     readonly fe_parse_op: (a: number, b: number) => [number, number];
+    readonly fe_paste_nodes: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly fe_read_positions: (a: number, b: number) => [number, number];
     readonly fe_rename_group: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly fe_rename_node: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly fe_reverse_edge: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
@@ -179,6 +199,7 @@ export interface InitOutput {
     readonly fe_set_node_style: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly fe_subgraphs: (a: number, b: number) => [number, number];
     readonly fe_ungroup: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly fe_write_positions: (a: number, b: number, c: number, d: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

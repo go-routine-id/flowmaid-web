@@ -303,7 +303,13 @@ pub fn node_keys_impl(source: &str) -> Result<String, String> {
 /// Automatic-layout centres, flat `[x, y]` pairs.
 #[wasm_bindgen]
 pub fn auto_positions(source: &str) -> Result<Vec<f64>, JsError> {
-    Ok(match parse(source)? {
+    auto_positions_impl(source).map_err(|e| JsError::new(&e))
+}
+
+/// Native-callable core of [`auto_positions`] (used by flowmaid-mcp).
+pub fn auto_positions_impl(source: &str) -> Result<Vec<f64>, String> {
+    let doc = flowmaid::parser::parse_document(source).map_err(|e| e.to_string())?;
+    Ok(match doc {
         Document::Flowchart(g) | Document::State(g) => flowmaid::scene::scene(&g)
             .nodes
             .iter()
@@ -376,8 +382,9 @@ pub fn render_routed(source: &str, positions: &[f64]) -> Result<String, JsError>
 }
 
 /// Native-testable core of [`render_routed`] — `JsError` can only
-/// be constructed on wasm targets, so validation lives here.
-fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
+/// be constructed on wasm targets, so validation lives here. Also used
+/// by flowmaid-mcp to render a saved layout.
+pub fn routed_impl(source: &str, positions: &[f64]) -> Result<String, String> {
     let doc = flowmaid::parser::parse_document(source).map_err(|e| e.to_string())?;
     let n = match &doc {
         Document::Flowchart(g) | Document::State(g) => g.nodes.len(),
