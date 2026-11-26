@@ -2,7 +2,7 @@
 // every tool, and check the live channel (SSE out, POST in) and the file
 // binding, against the Rust binary. Run: cargo build -p flowmaid-mcp && npm test
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -172,8 +172,48 @@ assert.ok(r.isError); assert.match(r.content[0].text, /No diagram named "nope"/)
 r = await call("render_diagram", { doc: "nope" });
 assert.ok(r.isError);
 
+// second review ──────────────────────────────────────────────────────
+// deleting a node whose lines end the source (no trailing newline) works
+r = await call("set_diagram", { doc: "del", source: "flowchart TD\n    A --> B\n    A --> B" });
+r = await call("edit_diagram", { doc: "del", ops: [{ op: "delete_node", id: "B" }] });
+assert.ok(!r.isError, r.content[0].text);
+assert.deepEqual(r.json.nodes.map((n) => n.id), ["A"]); // A survives (it was only in the dropped lines)
+// keyword ids are refused, and existing keyword nodes say why ops can't touch them
+r = await call("edit_diagram", { doc: "del", ops: [{ op: "add_node", id: "end", label: "Finish" }] });
+assert.ok(r.isError); assert.match(r.content[0].text, /Mermaid keyword/);
+await call("set_diagram", { doc: "del", source: "flowchart TD\n    A --> end[Finish]" });
+r = await call("edit_diagram", { doc: "del", ops: [{ op: "rename_node", id: "end", label: "Done" }] });
+assert.ok(r.isError); assert.match(r.content[0].text, /keyword as its id/);
+// a mistyped doc name is an error, not a new diagram
+r = await call("edit_diagram", { doc: "defualt", ops: [{ op: "add_node", label: "X" }] });
+assert.ok(r.isError); assert.match(r.content[0].text, /No diagram named "defualt"/);
+// "default" colour resets before an explicit fill
+await call("set_diagram", { doc: "del", source: "flowchart TD\n    A --> B\n    style A fill:#e5f5ea,stroke:#2f9e44" });
+r = await call("edit_diagram", { doc: "del", ops: [{ op: "set_color", ids: ["A"], color: "default", fill: "#ffffff" }] });
+assert.match(r.json.source, /style A fill:#ffffff$/m);
+// only real CSS hex lengths
+r = await call("edit_diagram", { doc: "del", ops: [{ op: "set_color", ids: ["A"], fill: "#12345" }] });
+assert.ok(r.isError); assert.match(r.content[0].text, /not a #hex/);
+// the size limit holds for edits and live POSTs too
+const near = "flowchart TD\n    A[" + "x".repeat(195_000) + "] --> B";
+await call("set_diagram", { doc: "del", source: near });
+r = await call("edit_diagram", { doc: "del", ops: [{ op: "add_node", label: "y".repeat(10_000) }] });
+assert.ok(r.isError); assert.match(r.content[0].text, /200 kB/);
+res = await fetch(`${url.origin}/__source?doc=del&t=${t}`, { method: "POST", body: JSON.stringify({ source: near + "x".repeat(10_000), client: "x" }) });
+assert.equal(res.status, 413);
+// a bound file that can't be written: the edit is refused, nothing changes
+const dir2 = mkdtempSync(join(tmpdir(), "flowmaid-mcp-"));
+const file2 = join(dir2, "w.mmd");
+await call("open_file", { path: file2, doc: "w", create_with: "flowchart TD\n    A --> B\n" });
+rmSync(dir2, { recursive: true });
+r = await call("edit_diagram", { doc: "w", ops: [{ op: "rename_node", id: "A", label: "Lost?" }] });
+assert.ok(r.isError); assert.match(r.content[0].text, /could not write/);
+await waitFor(() => false).catch(() => {});
+g = (await call("get_diagram", { doc: "w" })).json;
+assert.equal(g.source, "flowchart TD\n    A --> B\n");
+
 const list = (await call("list_diagrams")).json;
-assert.deepEqual(list.diagrams.map((d) => d.doc).sort(), ["default", "f", "seq"]);
+assert.deepEqual(list.diagrams.map((d) => d.doc).sort(), ["default", "del", "f", "seq", "w"]);
 
 await client.close();
 // FLOWMAID_PORT=0 lets the OS pick a port

@@ -79,49 +79,40 @@ pub fn describe(src: &str) -> Map<String, Value> {
         out.insert("nodes".into(), json!(ids.iter().map(|id| json!({ "id": id })).collect::<Vec<_>>()));
         return out;
     }
-    let (blocks, member) = edit::subgraphs(src);
+    // One parse for all nodes and one for all edges (per-node calls would
+    // re-parse the whole source each time: quadratic on big diagrams).
+    let (blocks, _) = edit::subgraphs(src);
     let nodes: Vec<Value> = ids
         .iter()
-        .map(|id| {
+        .zip(edit::node_infos(src, &ids))
+        .map(|(id, info)| {
             let mut n = Map::new();
             n.insert("id".into(), json!(id));
-            n.insert("label".into(), json!(edit::node_label(src, id)));
-            n.insert("shape".into(), json!(edit::node_shape(src, id).unwrap_or("custom")));
-            if let Some(f) = edit::node_fill(src, id) {
+            n.insert("label".into(), json!(info.label));
+            n.insert("shape".into(), json!(info.shape.unwrap_or("custom")));
+            if let Some(f) = info.fill {
                 n.insert("fill".into(), json!(f));
             }
-            if let Some((_, g)) = member.iter().find(|(m, _)| m == id) {
+            if let Some(g) = info.group {
                 n.insert("group".into(), json!(g));
             }
             Value::Object(n)
         })
         .collect();
-    let mut seen: Vec<((String, String), usize)> = Vec::new();
-    let edges: Vec<Value> = edit::edge_list(src)
+    let edges: Vec<Value> = edit::edge_infos(src)
         .into_iter()
-        .map(|(from, to)| {
-            let nth = match seen.iter_mut().find(|(k, _)| k.0 == from && k.1 == to) {
-                Some((_, c)) => {
-                    *c += 1;
-                    *c - 1
-                }
-                None => {
-                    seen.push(((from.clone(), to.clone()), 1));
-                    0
-                }
-            };
-            let op = edit::edge_op(src, &from, &to, nth);
+        .map(|(from, to, nth, op)| {
             let mut e = Map::new();
             e.insert("from".into(), json!(from));
             e.insert("to".into(), json!(to));
             if nth > 0 {
                 e.insert("nth".into(), json!(nth));
             }
-            if let Some(l) = op.as_ref().and_then(|o| o.label.clone()).filter(|l| !l.is_empty()) {
+            if let Some(l) = op.label.filter(|l| !l.is_empty()) {
                 e.insert("label".into(), json!(l));
             }
-            e.insert("style".into(), json!(op.as_ref().map_or("solid", |o| o.kind.as_str())));
-            if op.as_ref().is_some_and(|o| o.end.is_empty()) {
+            e.insert("style".into(), json!(op.kind));
+            if op.end.is_empty() {
                 e.insert("arrow".into(), json!(false));
             }
             Value::Object(e)

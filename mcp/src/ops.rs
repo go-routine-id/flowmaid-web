@@ -166,13 +166,22 @@ impl Op {
     }
 }
 
-fn valid_id(id: &str) -> bool {
-    !id.is_empty() && id.chars().all(|c| c.is_alphanumeric() || c == '_')
+/// Letters, digits or _, and not a word that starts other lines (`end`,
+/// `style`, …): a node with such an id can't be edited here.
+fn check_id(id: &str, what: &str) -> Result<(), String> {
+    if id.is_empty() || !id.chars().all(|c| c.is_alphanumeric() || c == '_') {
+        return Err(format!("{what} \"{id}\" must be letters, digits or _"));
+    }
+    if edit::is_keyword(id) {
+        return Err(format!("{what} \"{id}\" is a Mermaid keyword; pick another"));
+    }
+    Ok(())
 }
 
+/// #rgb, #rgba, #rrggbb or #rrggbbaa.
 fn valid_hex(c: &str) -> bool {
     let h = c.strip_prefix('#').unwrap_or("");
-    (3..=8).contains(&h.len()) && h.chars().all(|c| c.is_ascii_hexdigit())
+    matches!(h.len(), 3 | 4 | 6 | 8) && h.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 fn op_text(style: Option<Style>, label: Option<&str>, arrow: bool) -> String {
@@ -207,6 +216,13 @@ fn apply_one(src: &str, o: &Op, created: &mut Vec<String>) -> Result<String, Str
     let ids = node_ids(src);
     let has = |id: &str| -> Result<(), String> {
         if ids.iter().any(|x| x == id) {
+            if edit::is_keyword(id) {
+                // The engine draws it, but its lines aren't statements to
+                // the editor: every op would silently do nothing.
+                return Err(format!(
+                    "node \"{id}\" has a Mermaid keyword as its id and can't be edited by ops; rename it in the source with set_diagram"
+                ));
+            }
             Ok(())
         } else {
             Err(format!("no node with id \"{id}\" (ids: {})", if ids.is_empty() { "none".into() } else { ids.join(", ") }))
@@ -221,9 +237,7 @@ fn apply_one(src: &str, o: &Op, created: &mut Vec<String>) -> Result<String, Str
     Ok(match o {
         Op::AddNode { label, id, shape, from, edge_label, edge_style } => {
             let id = id.clone().unwrap_or_else(|| edit::fresh_id(src, &ids, "N"));
-            if !valid_id(&id) {
-                return Err(format!("id \"{id}\" must be letters, digits or _"));
-            }
+            check_id(&id, "id")?;
             if ids.contains(&id) {
                 return Err(format!("id \"{id}\" is already used"));
             }
@@ -277,9 +291,13 @@ fn apply_one(src: &str, o: &Op, created: &mut Vec<String>) -> Result<String, Str
         Op::SetColor { ids: list, color, fill, stroke } => {
             list.iter().try_for_each(|i| has(i))?;
             let named = color.and_then(Color::fill_stroke);
+            // "default" resets first; a fill / stroke given with it then
+            // applies on top of the reset, not of the old colours.
+            let reset = matches!(color, Some(Color::Default));
+            let base = if reset { edit::set_node_style(src, list, None) } else { src.to_string() };
             if named.is_none() && fill.is_none() && stroke.is_none() {
-                if matches!(color, Some(Color::Default)) {
-                    return Ok(edit::set_node_style(src, list, None));
+                if reset {
+                    return Ok(base);
                 }
                 return Err("give a color name, or fill / stroke".into());
             }
@@ -297,15 +315,13 @@ fn apply_one(src: &str, o: &Op, created: &mut Vec<String>) -> Result<String, Str
             if let Some(s) = s {
                 props.push(("stroke".to_string(), Some(s)));
             }
-            edit::set_node_style(src, list, Some(&props))
+            edit::set_node_style(&base, list, Some(&props))
         }
         Op::Group { ids: list, title, id } => {
             list.iter().try_for_each(|i| has(i))?;
             let (blocks, _) = edit::subgraphs(src);
             let gid = id.clone().unwrap_or_else(|| edit::fresh_id(src, &ids, "G"));
-            if !valid_id(&gid) {
-                return Err(format!("group id \"{gid}\" must be letters, digits or _"));
-            }
+            check_id(&gid, "group id")?;
             if blocks.iter().any(|b| b.id == gid) || ids.contains(&gid) {
                 return Err(format!("id \"{gid}\" is already used"));
             }

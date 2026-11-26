@@ -140,4 +140,8 @@ assert.equal(fe.renameGroup(s, "G1", "In put (x)").includes('subgraph G1 ["In pu
   assert.equal(fe.nodeShape(two, "A"), "rounded"); assert.equal(fe.nodeShape(two, "D"), "rounded");
 }
 assert.deepEqual(fe.NODE_SHAPES, fe.nodeShapes(), "NODE_SHAPES matches the Rust table");
+// Dropping the last two lines (no trailing newline) must not panic the wasm.
+// …and keeps A, which only appeared in the two dropped lines.
+assert.equal(fe.deleteNode("flowchart TD\n    A --> B\n    A --> B", "B"), "flowchart TD\n    A");
+assert.equal(fe.deleteNode("flowchart TD\n    A --> C\n    A --> B\n    C --> B", "B"), "flowchart TD\n    A --> C\n");
 console.log("ALL OK");

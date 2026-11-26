@@ -103,9 +103,14 @@ function push() {
         headers: { "content-type": "application/json" },
       });
       if (r.ok) {
-        // Only now is it the server's copy too.
-        serverSrc = source;
-        serverVersion = (await r.json()).version;
+        // Only now is it the server's copy too, unless a newer version
+        // (an agent edit) already arrived over SSE while this was in
+        // flight: then that one stands.
+        const v = (await r.json()).version;
+        if (serverVersion === null || v > serverVersion) {
+          serverSrc = source;
+          serverVersion = v;
+        }
         refused = null;
       } else if (r.status === 409) {
         // The agent changed it first; its version arrives over SSE.

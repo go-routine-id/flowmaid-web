@@ -255,6 +255,9 @@
     background: var(--bg); box-shadow: 0 4px 14px rgb(0 0 0 / .14); white-space: nowrap;
   }
   .tools.show { display: flex; }
+  /* Never wider than the canvas (it would overhang, and clicks on the
+     hidden part land on the code panel): wrap instead. */
+  .tools { width: max-content; max-width: calc(100% - 8px); flex-wrap: wrap; justify-content: center; }
   .tools button {
     width: 30px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent;
     display: grid; place-items: center; color: var(--dim); touch-action: none;

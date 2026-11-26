@@ -22,6 +22,18 @@ pub struct Doc {
     pub origin: String,
 }
 
+/// Why `set_if` changed nothing.
+#[derive(Debug)]
+pub enum SetError {
+    /// The diagram moved past the base version; here is where it is now.
+    Stale(Doc),
+    /// The bound file could not be written.
+    Write(String),
+}
+
+/// Largest source the server stores or renders.
+pub const MAX_SOURCE: usize = 200_000;
+
 #[derive(Clone, Debug)]
 pub struct Change {
     pub doc: Doc,
@@ -77,33 +89,37 @@ impl Store {
     }
 
     /// Replace a diagram's source; writes a bound file unless the change
-    /// came from that file.
-    pub fn set(&self, name: &str, source: &str, origin: &str) -> Doc {
-        self.set_if(name, source, origin, None).unwrap_or_else(|cur| cur)
+    /// came from that file. Err when that write fails (nothing changed).
+    pub fn set(&self, name: &str, source: &str, origin: &str) -> Result<Doc, String> {
+        self.set_if(name, source, origin, None).map_err(|e| match e {
+            SetError::Write(m) => m,
+            SetError::Stale(_) => unreachable!("no base version given"),
+        })
     }
 
     /// Replace the source only if it is still at `base` (an edit built on
     /// that version); Err(current) when someone changed it since. Check,
     /// change and file write happen under one lock, so no other change
     /// (or the file poller) can slip in between.
-    pub fn set_if(&self, name: &str, source: &str, origin: &str, base: Option<u64>) -> Result<Doc, Doc> {
+    pub fn set_if(&self, name: &str, source: &str, origin: &str, base: Option<u64>) -> Result<Doc, SetError> {
         let d = {
             let mut docs = self.docs.lock().unwrap();
             let d = docs.entry(name.to_string()).or_insert_with(|| starter(name));
             if base.is_some_and(|b| b != d.version) {
-                return Err(d.clone());
+                return Err(SetError::Stale(d.clone()));
             }
             if d.source == source {
                 return Ok(d.clone());
             }
+            // Write the bound file first: if that fails, nothing changes
+            // (otherwise the poller would take the old file back as an
+            // outside edit and silently undo this one).
+            if let (Some(f), false) = (&d.file, origin == "file") {
+                write_atomic(f, source).map_err(|e| SetError::Write(format!("could not write {}: {e}", f.display())))?;
+            }
             d.source = source.to_string();
             d.version += 1;
             d.origin = origin.to_string();
-            if let (Some(f), false) = (&d.file, origin == "file") {
-                if let Err(e) = write_atomic(f, source) {
-                    eprintln!("flowmaid-mcp: write {} failed: {e}", f.display());
-                }
-            }
             d.clone()
         };
         let _ = self.tx.send(Change { doc: d.clone() });
@@ -143,7 +159,7 @@ impl Store {
         };
         self.get(name);
         self.docs.lock().unwrap().get_mut(name).unwrap().file = Some(file);
-        Ok(self.set(name, &text, "file"))
+        self.set(name, &text, "file")
     }
 
     /// Follow bound files: changes made by other programs flow in.

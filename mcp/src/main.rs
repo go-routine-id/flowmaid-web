@@ -21,7 +21,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
-use store::{valid_doc_name, Doc, Store};
+use store::{valid_doc_name, Doc, SetError, Store, MAX_SOURCE};
 
 const INSTRUCTIONS: &str = "flowmaid renders Mermaid-style diagrams (flowchart/graph, erDiagram, classDiagram, \
 sequenceDiagram, stateDiagram, pie, swimlane, …). Diagrams are named documents (default: \"default\"). Typical loop: \
@@ -117,7 +117,6 @@ fn doc_name(doc: &Option<String>) -> Result<String, CallToolResult> {
     }
 }
 
-const MAX_SOURCE: usize = 200_000;
 
 #[tool_router]
 impl Flowmaid {
@@ -178,16 +177,19 @@ impl Flowmaid {
         if let Some(e) = engine::parse_error(&a.source) {
             return fail(format!("Not changed, the source does not parse: {e}"));
         }
-        let d = self.store.set(&name, &a.source, "agent");
-        json_result(&self.snapshot(&d))
+        match self.store.set(&name, &a.source, "agent") {
+            Ok(d) => json_result(&self.snapshot(&d)),
+            Err(e) => fail(format!("Not changed: {e}")),
+        }
     }
 
     #[tool(
         description = "Apply a list of edits to a flowchart, in order and all-or-nothing: add_node, rename_node, delete_node, connect, update_edge, delete_edge, set_shape, set_color, group, ungroup. Only the touched lines of the Mermaid source are rewritten. Returns the new state, including ids created by add_node / group. Open live views update immediately."
     )]
     async fn edit_diagram(&self, Parameters(a): Parameters<EditArgs>) -> CallToolResult {
-        let name = match doc_name(&a.doc) {
-            Ok(n) => n,
+        // Like the read tools: a mistyped name is an error, not a new diagram.
+        let name = match self.existing(&a.doc) {
+            Ok(d) => d.name,
             Err(e) => return e,
         };
         if a.ops.is_empty() {
@@ -203,10 +205,17 @@ impl Flowmaid {
                 Ok(r) => r,
                 Err(e) => return fail(format!("Nothing changed: {e}")),
             };
-            if let Ok(d) = self.store.set_if(&name, &src, "agent", Some(d.version)) {
-                let mut v = self.snapshot(&d);
-                v.as_object_mut().unwrap().insert("created".into(), json!(created));
-                return json_result(&v);
+            if src.len() > MAX_SOURCE {
+                return fail("Nothing changed: the result would exceed 200 kB.");
+            }
+            match self.store.set_if(&name, &src, "agent", Some(d.version)) {
+                Ok(d) => {
+                    let mut v = self.snapshot(&d);
+                    v.as_object_mut().unwrap().insert("created".into(), json!(created));
+                    return json_result(&v);
+                }
+                Err(SetError::Write(e)) => return fail(format!("Nothing changed: {e}")),
+                Err(SetError::Stale(_)) => {}
             }
         }
         fail("Nothing changed: the diagram kept changing under the edit (the user is editing it); call get_diagram and try again.")

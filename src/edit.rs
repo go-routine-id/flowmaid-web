@@ -163,6 +163,13 @@ const SHAPES: &[(&str, &[&str])] = &[
     ("{", &["}"]),
 ];
 
+/// Words that start a non-statement line. A node may be called `end`
+/// for the engine, but a line starting with one is not parsed as a
+/// statement here, so such nodes can't be edited.
+pub fn is_keyword(id: &str) -> bool {
+    OPAQUE_HEADS.contains(&id)
+}
+
 const OPAQUE_HEADS: &[&str] = &[
     "subgraph", "end", "direction", "classDef", "class", "style", "linkStyle", "click", "flowchart",
     "graph", "accTitle", "accDescr", "title",
@@ -648,10 +655,15 @@ fn at_label(inner: &str) -> Option<(usize, usize, String)> {
 /// The label a node currently shows (falls back to its id).
 pub fn node_label(src: &str, id: &str) -> String {
     let doc = parse_flow(src);
+    let refs: Vec<&Ref> = doc.refs().filter(|r| r.id == id).collect();
+    label_of(src, id, &refs)
+}
+
+/// A node's label from its refs, in source order.
+fn label_of(src: &str, id: &str, refs: &[&Ref]) -> String {
     // Mermaid lets a later definition override an earlier one.
-    let refs: Vec<&Ref> = doc.refs().collect();
-    for r in refs.into_iter().rev() {
-        let Some(sh) = r.shape.as_ref().filter(|_| r.id == id) else { continue };
+    for r in refs.iter().rev() {
+        let Some(sh) = r.shape.as_ref() else { continue };
         let inner = &src[sh.inner_start..sh.inner_end];
         if sh.kind == ShapeKind::At {
             if let Some((_, _, v)) = at_label(inner) {
@@ -697,10 +709,16 @@ pub fn format_label(label: &str) -> String {
 }
 
 /// Apply non-overlapping `(start, end, text)` edits.
+/// Apply `(start, end, text)` edits, right to left. Ranges are clamped to
+/// what is left of the string (as JS `slice` does): dropping the last two
+/// lines gives edits that share the newline between them, and the second
+/// must not run past the end the first one made.
 fn splice(src: &str, mut edits: Vec<(usize, usize, String)>) -> String {
     edits.sort_by_key(|e| std::cmp::Reverse(e.0));
     let mut out = src.to_string();
     for (a, b, t) in edits {
+        let b = b.min(out.len());
+        let a = a.min(b);
         out.replace_range(a..b, &t);
     }
     out
@@ -803,11 +821,11 @@ fn piece_text(p: &Piece) -> String {
 }
 
 // Ids that appear in any statement other than `except`.
-fn ids_outside(doc: &Doc, except: SegKey) -> HashSet<String> {
+fn ids_outside(doc: &Doc, except: &[SegKey]) -> HashSet<String> {
     let mut ids = HashSet::new();
     for (li, l) in doc.lines.iter().enumerate() {
         for (si, s) in l.segs.iter().enumerate() {
-            if (li, si) == except {
+            if except.contains(&(li, si)) {
                 continue;
             }
             for r in s.stmt.groups.iter().flatten() {
@@ -838,11 +856,24 @@ fn is_redundant(p: &Piece, outside: &HashSet<String>, emitted: &HashSet<String>)
 fn finish_pieces(doc: &Doc, key: SegKey, pieces: Vec<Piece>) -> Vec<String> {
     let seg = &doc.lines[key.0].segs[key.1];
     // Inside a subgraph a lone `A` is what puts A in the group: keep it.
-    let outside = if seg.in_group { HashSet::new() } else { ids_outside(doc, key) };
-    let mut emitted = HashSet::new();
+    let outside = if seg.in_group { HashSet::new() } else { ids_outside(doc, &[key]) };
+    keep_pieces(pieces, &outside, &mut HashSet::new())
+}
+
+/// Ids a piece is sure to keep: it has an edge, or a shape / class that
+/// makes it more than a bare mention, or it sits in a subgraph (where a
+/// bare `A` is what puts A in the group).
+fn surely_kept(p: &Piece, in_group: bool) -> bool {
+    in_group || !p.ops.is_empty() || p.groups[0].iter().any(|r| r.shape.is_some() || r.cls)
+}
+
+/// Drop redundant lone pieces: `outside` holds ids declared elsewhere,
+/// `emitted` those of pieces already kept (shared when several
+/// statements are rewritten together).
+fn keep_pieces(pieces: Vec<Piece>, outside: &HashSet<String>, emitted: &mut HashSet<String>) -> Vec<String> {
     let mut kept = Vec::new();
     for p in pieces {
-        if is_redundant(&p, &outside, &emitted) {
+        if is_redundant(&p, outside, emitted) {
             continue;
         }
         for r in p.groups.iter().flatten() {
@@ -965,10 +996,25 @@ fn names_node(l: &str, kw: &str, id: &str) -> bool {
 pub fn delete_node(src: &str, id: &str) -> String {
     let doc = parse_flow(src);
     let mut changes = HashMap::new();
+    // Every statement that names the node gets rewritten together.
+    let rewritten: Vec<SegKey> = doc
+        .lines
+        .iter()
+        .enumerate()
+        .flat_map(|(li, l)| l.segs.iter().enumerate().map(move |(si, s)| ((li, si), s)))
+        .filter(|(_, s)| s.stmt.groups.iter().flatten().any(|r| r.id == id))
+        .map(|(k, _)| k)
+        .collect();
+    // First split every statement, then decide which lone mentions are
+    // redundant. A lone `A` may go only if A is declared in a statement
+    // left as it is, or in a piece that is surely kept — not merely in
+    // another rewritten statement, which may be dropping its `A` too
+    // (both would go, and A with them).
+    let mut split: Vec<(SegKey, Vec<Piece>)> = Vec::new();
     for (li, line) in doc.lines.iter().enumerate() {
         for (si, seg) in line.segs.iter().enumerate() {
             let st = &seg.stmt;
-            if !st.groups.iter().flatten().any(|r| r.id == id) {
+            if !rewritten.contains(&(li, si)) {
                 continue;
             }
             let gs: Vec<Vec<Ref>> = st.groups.iter().map(|g| g.iter().filter(|r| r.id != id).cloned().collect()).collect();
@@ -992,8 +1038,26 @@ pub fn delete_node(src: &str, id: &str) -> String {
             if let Some(c) = cur {
                 pieces.push(c);
             }
-            changes.insert((li, si), finish_pieces(&doc, (li, si), pieces));
+            split.push(((li, si), pieces));
         }
+    }
+    let mut outside = ids_outside(&doc, &rewritten);
+    for ((li, si), pieces) in &split {
+        let in_group = doc.lines[*li].segs[*si].in_group;
+        for p in pieces.iter().filter(|p| surely_kept(p, in_group)) {
+            outside.extend(p.groups.iter().flatten().map(|r| r.id.clone()));
+        }
+    }
+    let mut emitted = HashSet::new();
+    for (key, pieces) in split {
+        let kept = if doc.lines[key.0].segs[key.1].in_group {
+            // Subgraph lines keep their mentions (and don't count toward
+            // other lines' emitted ids).
+            keep_pieces(pieces, &HashSet::new(), &mut HashSet::new())
+        } else {
+            keep_pieces(pieces, &outside, &mut emitted)
+        };
+        changes.insert(key, kept);
     }
     let removed: Vec<usize> = edge_list(src)
         .iter()
@@ -1374,22 +1438,96 @@ pub fn set_node_style(src: &str, ids: &[String], props: Option<&[(String, Option
 pub fn node_fill(src: &str, id: &str) -> Option<String> {
     let mut fill = None;
     for l in src.split('\n') {
-        let Some((_, body)) = style_line(l, id) else { continue };
-        // (?:^|,)\s*fill\s*:\s*([^,;]+)
-        for part in body.split(',') {
-            let t = part.trim_start();
-            let Some(r) = t.strip_prefix("fill") else { continue };
-            let r = r.trim_start();
-            let Some(v) = r.strip_prefix(':') else { continue };
-            let v = v.trim_start();
-            let n = v.find(';').unwrap_or(v.len());
-            if n > 0 {
-                fill = Some(v[..n].trim().to_string());
-                break;
-            }
+        if let Some(f) = style_line(l, id).and_then(|(_, body)| fill_of(body)) {
+            fill = Some(f);
         }
     }
     fill
+}
+
+/// `(?:^|,)\s*fill\s*:\s*([^,;]+)` in a style line's props.
+fn fill_of(body: &str) -> Option<String> {
+    for part in body.split(',') {
+        let t = part.trim_start();
+        let Some(r) = t.strip_prefix("fill") else { continue };
+        let Some(v) = r.trim_start().strip_prefix(':') else { continue };
+        let v = v.trim_start();
+        let n = v.find(';').unwrap_or(v.len());
+        if n > 0 {
+            return Some(v[..n].trim().to_string());
+        }
+    }
+    None
+}
+
+/// What a node shows, for listing every node at once.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NodeInfo {
+    pub label: String,
+    /// None for an `@{ … }` shape.
+    pub shape: Option<&'static str>,
+    pub fill: Option<String>,
+    pub group: Option<String>,
+}
+
+/// [`node_label`], [`node_shape`], [`node_fill`] and the subgraph of each
+/// of `ids`, from one parse (calling those per node re-parses the whole
+/// source for each, quadratic on big diagrams).
+pub fn node_infos(src: &str, ids: &[String]) -> Vec<NodeInfo> {
+    let doc = parse_flow(src);
+    let mut refs: HashMap<&str, Vec<&Ref>> = HashMap::new();
+    for r in doc.refs() {
+        refs.entry(r.id.as_str()).or_default().push(r);
+    }
+    let mut fills: HashMap<String, String> = HashMap::new();
+    for l in src.split('\n') {
+        let ind = ws_len(l, 0);
+        let Some(after) = l[ind..].strip_prefix("style") else { continue };
+        let gap = ws_len(after, 0);
+        let n = id_len(after, gap);
+        if gap == 0 || n == 0 {
+            continue;
+        }
+        let id = &after[gap..gap + n];
+        if let Some(f) = style_line(l, id).and_then(|(_, body)| fill_of(body)) {
+            fills.insert(id.to_string(), f);
+        }
+    }
+    let (_, member) = subgraphs(src);
+    let group: HashMap<&str, &str> = member.iter().map(|(m, g)| (m.as_str(), g.as_str())).collect();
+    ids.iter()
+        .map(|id| {
+            let rs = refs.get(id.as_str()).map(Vec::as_slice).unwrap_or(&[]);
+            NodeInfo {
+                label: label_of(src, id, rs),
+                shape: shape_ref_of(rs).and_then(|r| shape_of(src, r)),
+                fill: fills.get(id).cloned(),
+                group: group.get(id.as_str()).map(|g| g.to_string()),
+            }
+        })
+        .collect()
+}
+
+/// Every edge with its operator: (from, to, nth among from→to, op), in
+/// source order, from one parse.
+pub fn edge_infos(src: &str) -> Vec<(String, String, usize, EdgeOp)> {
+    let doc = parse_flow(src);
+    let mut seen: HashMap<(String, String), usize> = HashMap::new();
+    let mut out = Vec::new();
+    for seg in doc.lines.iter().flat_map(|l| &l.segs) {
+        let st = &seg.stmt;
+        for k in 0..st.ops.len() {
+            let op = parse_op(&st.ops[k].raw);
+            for a in &st.groups[k] {
+                for b in &st.groups[k + 1] {
+                    let n = seen.entry((a.id.clone(), b.id.clone())).or_default();
+                    out.push((a.id.clone(), b.id.clone(), *n, op.clone()));
+                    *n += 1;
+                }
+            }
+        }
+    }
+    out
 }
 
 // ── Subgraphs ──
@@ -1584,6 +1722,10 @@ pub const NODE_SHAPES: &[(&str, &str, &str)] = &[
 // The ref whose shape Mermaid uses (the last one that has one).
 fn shape_ref<'a>(doc: &'a Doc, id: &str) -> Option<&'a Ref> {
     let refs: Vec<&Ref> = doc.refs().filter(|r| r.id == id).collect();
+    shape_ref_of(&refs)
+}
+
+fn shape_ref_of<'a>(refs: &[&'a Ref]) -> Option<&'a Ref> {
     refs.iter().rev().find(|r| r.shape.is_some()).or(refs.first()).copied()
 }
 
@@ -1591,7 +1733,10 @@ fn shape_ref<'a>(doc: &'a Doc, id: &str) -> Option<&'a Ref> {
 /// for an unknown node or an `@{ … }` shape.
 pub fn node_shape(src: &str, id: &str) -> Option<&'static str> {
     let doc = parse_flow(src);
-    let r = shape_ref(&doc, id)?;
+    shape_of(src, shape_ref(&doc, id)?)
+}
+
+fn shape_of(src: &str, r: &Ref) -> Option<&'static str> {
     let Some(sh) = &r.shape else { return Some("rect") };
     let ShapeKind::Box(open) = sh.kind else { return None };
     let close = &src[sh.inner_end..sh.end];
@@ -1662,6 +1807,33 @@ mod tests {
         let out = delete_edge(S, "C", "E", 0);
         // D is declared nowhere else, so the left half stays as `C & D`.
         assert!(out.contains("    C & D\n    D --> E"), "{out}");
+    }
+
+    #[test]
+    fn deleting_the_last_two_lines_does_not_panic() {
+        // Both lines drop; their edits share the newline between them.
+        // A was only in the two dropped lines: it must survive (the JS
+        // version lost it, each line counting on the other to keep it).
+        assert_eq!(delete_node("flowchart TD\n    A --> B\n    A --> B", "B"), "flowchart TD\n    A");
+        assert_eq!(delete_node("flowchart TD\n    A --> C\n    A --> B\n    C --> B", "B"), "flowchart TD\n    A --> C\n");
+    }
+
+    #[test]
+    fn infos_match_the_per_node_calls() {
+        let src = "flowchart TD\n    A[a] --> B((b)) -->|x| C\n    A & C -.-> B\n    D@{ shape: circle, label: \"Dd\" }\n    subgraph G [g]\n        C\n    end\n    style B fill:#fff,stroke:#000\n    style B fill:#eee";
+        let ids: Vec<String> = ["A", "B", "C", "D", "Z"].iter().map(|s| s.to_string()).collect();
+        let infos = node_infos(src, &ids);
+        for (id, i) in ids.iter().zip(&infos) {
+            assert_eq!(i.label, node_label(src, id));
+            assert_eq!(i.shape, node_shape(src, id));
+            assert_eq!(i.fill, node_fill(src, id));
+        }
+        assert_eq!(infos[2].group.as_deref(), Some("G"));
+        let e = edge_infos(src);
+        assert_eq!(e.len(), edge_list(src).len());
+        for (f, t, n, op) in e {
+            assert_eq!(Some(op), edge_op(src, &f, &t, n));
+        }
     }
 
     #[test]

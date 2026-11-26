@@ -4,7 +4,7 @@
 //! Bound to 127.0.0.1, and every sync request must carry the session
 //! token from the URL, so other web pages cannot read or change diagrams.
 
-use crate::store::{valid_doc_name, Store};
+use crate::store::{valid_doc_name, SetError, Store, MAX_SOURCE};
 use axum::{
     body::Bytes,
     extract::{Query, State},
@@ -186,12 +186,21 @@ async fn source(State(app): State<App>, Query(q): Query<Q>, body: Bytes) -> Resp
     let Ok(p) = serde_json::from_slice::<Post>(&body) else {
         return (StatusCode::BAD_REQUEST, "expected {source, client, base}").into_response();
     };
+    if p.source.len() > MAX_SOURCE {
+        return (StatusCode::PAYLOAD_TOO_LARGE, "source too large (max 200 kB)").into_response();
+    }
     let client: String = p.client.unwrap_or_default().chars().take(32).collect();
     // Built on an older copy (the agent edited meanwhile): refuse rather
     // than silently undo that edit; the page gets the current copy over
     // SSE and says so.
     match app.store.set_if(&doc, &p.source, &format!("browser:{client}"), p.base) {
         Ok(d) => ([(header::CONTENT_TYPE, "application/json")], serde_json::json!({ "version": d.version }).to_string()).into_response(),
-        Err(cur) => (StatusCode::CONFLICT, [(header::CONTENT_TYPE, "application/json")], serde_json::json!({ "version": cur.version }).to_string()).into_response(),
+        Err(SetError::Stale(cur)) => (
+            StatusCode::CONFLICT,
+            [(header::CONTENT_TYPE, "application/json")],
+            serde_json::json!({ "version": cur.version }).to_string(),
+        )
+            .into_response(),
+        Err(SetError::Write(e)) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }
