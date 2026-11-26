@@ -163,3 +163,98 @@ editor.addEventListener("input", () => { if (!applying) push(); });
 // Some changes (examples, opened files) set the text without an input
 // event; catch those too.
 setInterval(() => { if (!applying && serverSrc !== null && editor.value !== serverSrc) push(); }, 800);
+
+// ── Selection → server ──
+// What is selected on the canvas, so the agent can act on "this node".
+let selTimer = 0, selNow = null;
+function pushSel() {
+  clearTimeout(selTimer);
+  selTimer = setTimeout(() => {
+    fetch(`/__selection?${q}`, {
+      method: "POST",
+      body: JSON.stringify({ selection: selNow, client, version: serverVersion }),
+      headers: { "content-type": "application/json" },
+    }).catch(() => {});
+  }, 150);
+}
+addEventListener("flowmaid:select", (e) => { selNow = e.detail; pushSel(); });
+
+// ── Chat with the agent ──
+// Messages go to the agent's session when Claude Code loaded this server
+// as a channel; its answers (reply_chat) come back over /__chat_events.
+const chatStyle = document.createElement("style");
+chatStyle.textContent = `
+  #live-chat-btn { font: inherit; letter-spacing: inherit; text-transform: inherit; color: var(--ink); background: transparent;
+    border: 0; border-left: 1px solid var(--line2); padding: 0 0 0 7px; cursor: pointer; }
+  #live-chat {
+    position: absolute; z-index: 5; top: 50px; right: 14px; width: min(340px, calc(100% - 28px)); display: flex; flex-direction: column;
+    border: 1px solid var(--line2); background: var(--bg); color: var(--ink); font: 13px var(--body);
+  }
+  #live-chat[hidden] { display: none; }
+  #live-chat .log { max-height: 260px; overflow-y: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  #live-chat .log:empty::before { content: attr(data-empty); color: var(--dim); font-size: 12px; }
+  #live-chat .msg { padding: 5px 8px; max-width: 88%; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #live-chat .me { align-self: flex-end; background: var(--accent-soft); }
+  #live-chat .agent { align-self: flex-start; border: 1px solid var(--line2); }
+  #live-chat .note { align-self: center; color: var(--dim); font-size: 11.5px; }
+  #live-chat form { display: flex; border-top: 1px solid var(--line2); }
+  #live-chat textarea { flex: 1; resize: none; border: 0; padding: 8px 10px; font: inherit; color: var(--ink); background: transparent; min-height: 38px; }
+  #live-chat textarea:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+  #live-chat button[type=submit] { border: 0; border-left: 1px solid var(--line2); padding: 0 12px; font: 600 12px var(--body); color: var(--ink); background: transparent; cursor: pointer; }
+`;
+document.head.append(chatStyle);
+const chatBtn = document.createElement("button");
+chatBtn.id = "live-chat-btn";
+chatBtn.type = "button";
+chatBtn.textContent = "Chat";
+chatBtn.setAttribute("aria-expanded", "false");
+badge.append(chatBtn);
+const chat = document.createElement("div");
+chat.id = "live-chat";
+chat.hidden = true;
+chat.innerHTML = `<div class="log" role="log" aria-live="polite"></div>
+  <form><textarea rows="1" maxlength="4000" placeholder="Ask the agent… (Enter to send)" aria-label="Message to the agent"></textarea><button type="submit">Send</button></form>`;
+document.getElementById("view").append(chat);
+const log = chat.querySelector(".log");
+log.dataset.empty = "Messages reach the agent when Claude Code runs with: claude --dangerously-load-development-channels server:flowmaid";
+const input = chat.querySelector("textarea");
+for (const el of [chatBtn, chat]) el.addEventListener("pointerdown", (e) => e.stopPropagation());
+chat.addEventListener("keydown", (e) => e.stopPropagation());
+chatBtn.addEventListener("click", () => {
+  chat.hidden = !chat.hidden;
+  chatBtn.setAttribute("aria-expanded", String(!chat.hidden));
+  if (!chat.hidden) input.focus();
+});
+function say(text, who) {
+  const p = document.createElement("div");
+  p.className = "msg " + who;
+  p.textContent = text;
+  log.append(p);
+  log.scrollTop = log.scrollHeight;
+}
+let waitTimer = 0;
+chat.querySelector("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  say(text, "me");
+  try {
+    const r = await fetch(`/__chat?${q}`, { method: "POST", body: JSON.stringify({ text }), headers: { "content-type": "application/json" } });
+    if (!r.ok) return say(`Not sent (${r.status}): ${await r.text()}`, "note");
+    // The server can't tell whether the session listens: say so if nothing comes back.
+    clearTimeout(waitTimer);
+    waitTimer = setTimeout(() => say("No answer yet. If none comes, start Claude Code with --dangerously-load-development-channels server:flowmaid.", "note"), 60000);
+  } catch {
+    say("Not sent — server unreachable", "note");
+  }
+});
+input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); chat.querySelector("form").requestSubmit(); }
+});
+const replies = new EventSource(`/__chat_events?${q}`);
+replies.addEventListener("reply", (e) => {
+  clearTimeout(waitTimer);
+  say(JSON.parse(e.data).text, "agent");
+  if (chat.hidden) chatBtn.click();
+});

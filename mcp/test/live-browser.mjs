@@ -54,6 +54,17 @@ const after = await node("Handle");
 assert.ok(Math.abs(after.x - moved.x) < 3 && Math.abs(after.y - moved.y) < 3, `drag kept: ${JSON.stringify([moved, after])}`);
 assert.match((await call("get_diagram")).source, /%% flowmaid:pos .*\bC=/, "agent edit keeps the layout");
 
+// what the user selects on the canvas reaches the agent
+assert.equal((await call("get_selection")).selected, null);
+const hs = await node("Handle");
+await page.mouse.click(hs.x, hs.y);
+let sel;
+await until(async () => { sel = await call("get_selection"); return sel.selected?.id === "C"; }, "node selection reaches agent");
+assert.deepEqual(sel.selected, { type: "node", id: "C" });
+assert.deepEqual((await call("get_diagram")).selection.selected, { type: "node", id: "C" });
+await page.keyboard.press("Escape");
+await until(async () => (await call("get_selection")).selected === null, "cleared selection reaches agent");
+
 // page (canvas toolbar) → agent
 const h = await node("Handle");
 await page.mouse.move(h.x, h.y);

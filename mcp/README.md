@@ -43,13 +43,15 @@ Then ask the agent something like *"draw the signup flow and open it in the live
 
 | Tool | What it does |
 |---|---|
-| `get_diagram` | Mermaid source plus parsed nodes (id, label, shape, fill, group), edges (from, to, nth, label, style) and groups, the live URL, and who changed it last (`agent`, `user (live view)`, `file`). |
+| `get_diagram` | Mermaid source plus parsed nodes (id, label, shape, fill, group), edges (from, to, nth, label, style) and groups, the live URL, who changed it last (`agent`, `user (live view)`, `file`), and the live view's `selection`. |
+| `get_selection` | What the user has selected on the live view canvas: a node, several nodes or an edge, or `null`, with the diagram version the page showed. Lets the agent act on "this node". Selecting needs edit mode on (flowcharts). |
 | `set_diagram` | Replace the whole source (any diagram type). Checked with the engine first; parse errors come back with a line number and change nothing. |
 | `edit_diagram` | A list of flowchart edits, applied in order and all-or-nothing: `add_node`, `rename_node`, `delete_node`, `connect`, `update_edge`, `delete_edge`, `set_shape`, `set_color`, `group`, `ungroup`. Only the touched lines are rewritten. |
 | `render_diagram` | PNG (default, rendered natively with resvg and your system fonts) or SVG of a document, or of any `source` passed in. |
 | `open_live_view` | Opens the diagram in the browser and returns the URL. |
 | `open_file` | Binds a document to a `.mmd` file: loaded on open, written on every edit, re-read when another program changes it. |
 | `list_diagrams` | The documents in this session. |
+| `reply_chat` | Answer a message the user typed in the live view's chat (see below); the text shows up in that page. |
 
 Documents are named (`doc`, default `"default"`); each has its own live URL (`?doc=name`).
 
@@ -61,7 +63,44 @@ Shapes: `rect`, `rounded`, `stadium`, `subroutine`, `cylinder`, `circle`, `doubl
 - The URL carries a random session token; requests without it are refused, so other web pages cannot read or change your diagrams. A restarted server has a new token: reopen the view from the agent.
 - An edit made in the browser on top of an older copy (the agent changed it meanwhile) is refused rather than undoing the agent's edit, and the page says so.
 - Node positions you drag in the browser are saved in the source as a `%% flowmaid:pos id=x,y …` comment line: the agent sees them in `get_diagram`, `render_diagram` draws that layout, and agent edits keep it (a deleted node leaves it).
+- What you select on the canvas (click, Shift/Ctrl+click, an edge) is reported to the server, kept in memory only, so the agent can ask with `get_selection`. Clicks that don't change the selection, hovering and the pointer position are not sent.
 - The badge in the corner shows the connection and switches between the session's documents; undo / redo in the page reach the agent like any other edit.
+
+## Chat from the live view (Claude Code channels)
+
+The **Chat** button in the live view's badge sends what you type straight into the agent's session, together with what is selected on the canvas, so *"make this red"* needs no switching to the terminal. The agent answers with `reply_chat`.
+
+This uses Claude Code [channels](https://code.claude.com/docs/en/channels), a research preview.
+
+### Step by step
+
+1. **Register the server once** (see [Setup](#setup)), e.g. `claude mcp add -s user flowmaid -- flowmaid-mcp`.
+2. **Start Claude Code with the channel loaded**, in an interactive session:
+
+   ```bash
+   claude --dangerously-load-development-channels server:flowmaid
+   ```
+
+   Pick *"I am using this for local development"* in the warning. The session then shows
+   `Channels (experimental) messages from server:flowmaid inject directly in this session`.
+   If it says `no MCP server configured with that name` instead, this `claude` reads a different config than the one
+   `flowmaid` was added to: run it with the same `CLAUDE_CONFIG_DIR` (or the same project for local scope).
+3. **Open the live view from that same session**: ask it *"open the live view"* (or any diagram request). Use the URL
+   *that* session gives you. Every Claude Code session runs its own `flowmaid-mcp`, on its own port (`7878`, then
+   `7879`, …) with its own token, and chat only reaches the session whose server served the page.
+4. **Select and ask**: turn on edit mode (flowcharts), select a node, several nodes or an edge, open **Chat** in the
+   live badge and type, e.g. *"make this green"*. Enter sends, Shift+Enter adds a line.
+5. The message shows up in the session as a `<channel source="flowmaid" doc="…" selection="…">` message; the agent
+   edits the diagram (you see it change) and answers with `reply_chat`, which appears in the chat panel.
+
+### Good to know
+
+- Without the flag the page still sends, but nothing reaches a session; after a minute without an answer the panel
+  says how to start it. `-p` / non-interactive runs ignore the flag.
+- Messages carry the session token like every other sync request, the server only listens on `127.0.0.1`, and a
+  message is at most 4000 characters.
+- The server answers `initialize` with protocol `2025-11-25`, the last revision with that handshake, because Claude
+  Code only registers channels on it.
 
 ## Development
 

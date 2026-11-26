@@ -24,7 +24,12 @@ const safeJson = (t) => { try { return JSON.parse(t); } catch { return null; } }
 
 const { tools } = await client.listTools();
 assert.deepEqual(tools.map((t) => t.name).sort(),
-  ["edit_diagram", "get_diagram", "list_diagrams", "open_file", "open_live_view", "render_diagram", "set_diagram"]);
+  ["edit_diagram", "get_diagram", "get_selection", "list_diagrams", "open_file", "open_live_view", "render_diagram", "reply_chat", "set_diagram"]);
+
+// a Claude Code channel, on the last protocol with an initialize handshake
+assert.deepEqual(client.getServerCapabilities().experimental, { "claude/channel": {} });
+const channel = [];
+client.fallbackNotificationHandler = async (n) => { if (n.method === "notifications/claude/channel") channel.push(n.params); };
 
 // get
 let g = (await call("get_diagram")).json;
@@ -214,6 +219,31 @@ assert.equal(g.source, "flowchart TD\n    A --> B\n");
 
 const list = (await call("list_diagrams")).json;
 assert.deepEqual(list.diagrams.map((d) => d.doc).sort(), ["default", "del", "f", "seq", "w"]);
+
+// chat: page → channel notification (with the selection), reply_chat → page
+{
+  const u = new URL((await call("open_live_view", { open: false })).json.url);
+  const t = u.searchParams.get("t");
+  const post = (path, body, tok = t) => fetch(`${u.origin}${path}?doc=default&t=${tok}`, { method: "POST", body: JSON.stringify(body) });
+  await post("/__selection", { selection: { type: "node", id: "A" }, version: 1 });
+  assert.equal((await post("/__chat", { text: "  make this red  " })).status, 202);
+  for (let i = 0; i < 50 && !channel.length; i++) await new Promise((r) => setTimeout(r, 50));
+  assert.deepEqual(channel[0], { content: "make this red", meta: { doc: "default", selection: '{"type":"node","id":"A"}' } });
+  assert.equal((await post("/__chat", { text: "x" }, "bad")).status, 403);
+  assert.equal((await post("/__chat", { text: "   " })).status, 400);
+  assert.equal((await post("/__chat", { text: "x".repeat(4001) })).status, 413);
+  assert.equal(channel.length, 1);
+  // replies reach a page listening on that doc
+  const ctl = new AbortController();
+  const res = await fetch(`${u.origin}/__chat_events?doc=default&t=${t}`, { signal: ctl.signal });
+  const reader = res.body.getReader();
+  await new Promise((r) => setTimeout(r, 100));
+  assert.ok(!(await call("reply_chat", { doc: "default", text: "Done: A is red." })).isError);
+  let got = "";
+  while (!got.includes("Done: A is red.")) got += new TextDecoder().decode((await reader.read()).value);
+  assert.match(got, /event: reply\ndata: \{"text":"Done: A is red."\}/);
+  ctl.abort();
+}
 
 await client.close();
 // FLOWMAID_PORT=0 lets the OS pick a port
