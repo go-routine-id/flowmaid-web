@@ -1,0 +1,8 @@
+{
+  "name": "flowmaid-mcp-tests",
+  "private": true,
+  "type": "module",
+  "description": "Drives the flowmaid-mcp binary with the official MCP TypeScript client.",
+  "scripts": { "test": "node smoke.mjs" },
+  "devDependencies": { "@modelcontextprotocol/sdk": "^1.32.2" }
+}

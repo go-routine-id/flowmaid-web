@@ -16,3 +16,43 @@ jobs:
       - run: cargo test
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo check --lib --target wasm32-unknown-unknown
+
+  # pkg/ is a committed build of src/edit.rs (the playground runs it, the
+  # MCP server runs the Rust directly): fail if it no longer matches.
+  wasm-pkg:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: wasm-bindgen-cli at the Cargo.lock version
+        run: cargo install wasm-bindgen-cli --locked --version "$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p')"
+      - run: cargo build --lib --release --target wasm32-unknown-unknown
+      - run: wasm-bindgen --target web --out-dir target/pkg-fresh target/wasm32-unknown-unknown/release/flowmaid_web.wasm
+      - name: exports unchanged
+        run: diff pkg/flowmaid_web.js target/pkg-fresh/flowmaid_web.js && diff pkg/flowmaid_web.d.ts target/pkg-fresh/flowmaid_web.d.ts
+      - name: behaviour unchanged
+        run: node tests/pkg-matches-source.mjs target/pkg-fresh/flowmaid_web.js
+
+  mcp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo clippy -p flowmaid-mcp --all-targets -- -D warnings
+      - run: cargo build -p flowmaid-mcp
+      # The playground's edit logic (wasm build of src/edit.rs) against its JS tests.
+      - run: node tests/flowedit.test.mjs
+      - run: npm ci
+        working-directory: mcp/test
+      - run: npm test
+        working-directory: mcp/test

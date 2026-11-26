@@ -30,10 +30,19 @@ The ⛶ button on the zoom bar (or Shift+F) shows the canvas alone, fullscreen w
 
 The **Edit** button (`V`) turns these canvas gestures off and on; it is on by default. Only the statements an action touches are rewritten (`flowedit.js`), and Ctrl/⌘+Z in the code panel undoes canvas edits too. Tests: `node tests/flowedit.test.mjs`.
 
+## MCP server (AI agents + live view)
+
+[`mcp/`](mcp/) is a Rust MCP server that gives an AI agent tools to read, edit and render diagrams with this engine, and serves this playground locally as a live view that stays in sync both ways with what the agent sees. The edit logic both share lives in [`src/edit.rs`](src/edit.rs) (wasm for the page, native for the server). Setup and tools: [mcp/README.md](mcp/README.md).
+
+```bash
+cargo install --locked --git https://github.com/go-routine-id/flowmaid-web flowmaid-mcp
+claude mcp add flowmaid -- flowmaid-mcp
+```
+
 ## Building
 
 ```bash
-wasm-pack build --target web --release   # emits pkg/
+scripts/build-wasm.sh                    # emits pkg/ (cargo + wasm-bindgen + wasm-opt; wasm-pack works too)
 python3 -m http.server                   # then open http://localhost:8000
 ```
 

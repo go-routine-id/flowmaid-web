@@ -255,6 +255,9 @@
     background: var(--bg); box-shadow: 0 4px 14px rgb(0 0 0 / .14); white-space: nowrap;
   }
   .tools.show { display: flex; }
+  /* Never wider than the canvas (it would overhang, and clicks on the
+     hidden part land on the code panel): wrap instead. */
+  .tools { width: max-content; max-width: calc(100% - 8px); flex-wrap: wrap; justify-content: center; }
   .tools button {
     width: 30px; height: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent;
     display: grid; place-items: center; color: var(--dim); touch-action: none;
@@ -1676,7 +1679,9 @@ function placeTools() {
   Object.assign(hoverBox.style, { left: r.x - 4 + "px", top: r.y - 4 + "px", width: r.w + 8 + "px", height: r.h + 8 + "px" });
   const th = nodeTools.offsetHeight + 8;
   const above = r.y - th >= 4;
-  Object.assign(nodeTools.style, { left: r.cx + "px", top: (above ? r.y - th : r.y + r.h + 10) + "px" });
+  const tx = clampToView(nodeTools, r.cx);
+  if (tx === null) { nodeTools.classList.remove("show"); hoverBox.style.display = "none"; return; }
+  Object.assign(nodeTools.style, { left: tx + "px", top: (above ? r.y - th : r.y + r.h + 10) + "px" });
 }
 
 nodeTools.addEventListener("pointerenter", () => clearTimeout(hoverTimer));
@@ -1711,6 +1716,17 @@ nodeTools.addEventListener("pointerdown", (ev) => {
     }
   });
 });
+
+// A toolbar centred on x, kept inside the canvas: near an edge it would
+// be clipped, and a click on its hidden half would land on whatever is
+// next to the canvas (the code panel).
+// Returns null when the anchor itself is off the canvas: then the
+// toolbar hides rather than act on something the user can't see.
+function clampToView(el, x) {
+  const half = el.offsetWidth / 2, w = view.clientWidth;
+  if (x < 0 || x > w) return null;
+  return Math.max(half + 4, Math.min(w - half - 4, x));
+}
 
 // Flow direction of the document: where a "next" node goes.
 function flowDir() {
@@ -1846,7 +1862,9 @@ function placeSelectionTools() {
   if (em) {
     const kind = memo(`op:${sel.from}>${sel.to}#${sel.nth}`, () => fe.edgeOp(good.src, sel.from, sel.to, sel.nth)?.kind);
     for (const b of edgeTools.querySelectorAll("[data-kind]")) b.setAttribute("aria-pressed", String(b.dataset.kind === kind));
-    Object.assign(edgeTools.style, { left: em[0] + "px", top: Math.max(4, em[1] - edgeTools.offsetHeight - 14) + "px" });
+    const ex = clampToView(edgeTools, em[0]);
+    if (ex === null) edgeTools.classList.remove("show");
+    Object.assign(edgeTools.style, { left: (ex ?? 0) + "px", top: Math.max(4, em[1] - edgeTools.offsetHeight - 14) + "px" });
   }
   // Several nodes: a box each and one toolbar over them all.
   const ids = editActive() && sel?.type === "nodes" ? sel.ids : [];
@@ -1865,7 +1883,9 @@ function placeSelectionTools() {
     multiTools.querySelector('[data-act="ungroup"]').hidden = !(h.size === 1 && !h.has(null));
     const th = multiTools.offsetHeight + 12;
     const above = u.y - th >= 4;
-    Object.assign(multiTools.style, { left: u.x + u.w / 2 + "px", top: (above ? u.y - th : u.y + u.h + 12) + "px" });
+    const mx = clampToView(multiTools, u.x + u.w / 2);
+    if (mx === null) multiTools.classList.remove("show");
+    Object.assign(multiTools.style, { left: (mx ?? 0) + "px", top: (above ? u.y - th : u.y + u.h + 12) + "px" });
   }
   if (paletteFor) placePalette();
 }
@@ -2923,6 +2943,15 @@ await init();
 applyEngineUI();
 showVersion();
 openSource(EXAMPLES.flow);
+
+// Hook for pages that drive the playground (the flowmaid MCP live view):
+// open() loads a document with a fresh layout; replace() swaps the text
+// and keeps the layout, so dragged nodes stay where they are.
+window.flowmaid = {
+  open: (src) => openSource(src),
+  replace: (src) => { editor.value = src; editor.dispatchEvent(new Event("input")); },
+};
+dispatchEvent(new Event("flowmaid:ready"));
 </script>
 </body>
 </html>
