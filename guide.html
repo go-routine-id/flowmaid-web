@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flowmaid playground guide</title>
+<meta name="description" content="Editing diagrams on the flowmaid playground canvas, keyboard shortcuts, and connecting an AI agent through the flowmaid MCP server.">
+<script>
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("theme"); } catch (e) {}
+    if (t) document.documentElement.dataset.theme = t;
+  })();
+</script>
+<style>
+  :root {
+    --bg: #efece5; --panel: #e7e3da; --ink: #15140f; --dim: #55534a; --muted: #86826f;
+    --line2: #cbc5b6; --accent: #8839ef; --ok: #2d9f52;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --body: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17171a; --panel: #1e1e22; --ink: #eae8ee; --dim: #cdccd2; --muted: #908f96;
+      --line2: #35353d; --accent: #cba6f7; --ok: #7ecf8a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17171a; --panel: #1e1e22; --ink: #eae8ee; --dim: #cdccd2; --muted: #908f96;
+    --line2: #35353d; --accent: #cba6f7; --ok: #7ecf8a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 400 15px/1.6 var(--body); }
+  main { max-width: 780px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  h1 { margin: 0; font-size: 28px; letter-spacing: -.03em; }
+  h2 { margin: 40px 0 8px; font-size: 20px; letter-spacing: -.02em; padding-top: 8px; border-top: 1px solid var(--line2); }
+  h3 { margin: 22px 0 4px; font-size: 15.5px; }
+  p, li { color: var(--dim); }
+  b, strong { color: var(--ink); }
+  a { color: var(--accent); }
+  code, kbd { font: 500 13px var(--mono); }
+  kbd { padding: 1px 5px; border: 1px solid var(--line2); border-bottom-width: 2px; background: var(--panel); color: var(--ink); white-space: nowrap; }
+  pre { padding: 10px 12px; background: var(--panel); border: 1px solid var(--line2); overflow-x: auto; }
+  pre code { color: var(--ink); }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line2); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  td:first-child { white-space: nowrap; color: var(--ink); }
+  nav { margin: 16px 0 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; }
+  .back { margin-left: auto; font-size: 14px; }
+  .note { padding: 8px 12px; border-left: 3px solid var(--accent); background: var(--panel); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Playground guide</h1>
+    <a class="back" href="./">← back to the playground</a>
+  </header>
+  <p>The <a href="./">flowmaid playground</a> renders Mermaid-style diagrams with the flowmaid engine (pure Rust, as WebAssembly) and lets you edit flowcharts right on the canvas. Every canvas action is written back into the Mermaid code, so the code panel is always the diagram's source. The diagram syntax itself is covered in the <a href="/flowmaid/docs/">flowmaid documentation</a>.</p>
+  <nav>
+    <a href="#canvas">Editing on the canvas</a>
+    <a href="#keys">Keyboard</a>
+    <a href="#undo">Undo &amp; redo</a>
+    <a href="#view">View, files &amp; export</a>
+    <a href="#ai">AI agents (MCP)</a>
+  </nav>
+
+  <h2 id="canvas">Editing on the canvas</h2>
+  <p>Visual editing works on <code>flowchart</code> / <code>graph</code> diagrams with the flowmaid engine. The <b>Edit</b> button (<kbd>V</kbd>) switches the canvas gestures below on and off; it is on by default.</p>
+
+  <h3>Nodes</h3>
+  <ul>
+    <li><b>Hover a node</b> (tap it on a touch screen) for its toolbar: <b>+</b> adds the next node along the flow, connected, in the nearest free spot (drag <b>+</b> onto another node to connect the two instead); <b>✎</b> edits the label; <b>◩</b> changes the shape; <b>🎨</b> sets a colour; <b>🗑</b> deletes the node with its edges.</li>
+    <li><b>Double-click</b> a node to edit its label in place, or empty canvas to add a node there.</li>
+    <li><b>Drag</b> a node to move it. Positions you set survive edits to the code.</li>
+    <li>Shapes: rectangle, rounded, stadium, subroutine, database, circle, double circle, decision, hexagon and both input/output parallelograms.</li>
+  </ul>
+
+  <h3>Edges</h3>
+  <ul>
+    <li>Drag the <b>●</b> handle of a selected node, or <kbd>Shift</kbd>-drag a node, onto another node to connect them; drop it on empty canvas for a new connected node.</li>
+    <li><b>Click an edge</b> or its label for its toolbar: edit the label, switch solid / dotted / thick, reverse it, delete it. Double-click an edge to edit its label.</li>
+  </ul>
+
+  <h3>Several nodes and groups</h3>
+  <ul>
+    <li><kbd>Shift</kbd>-click or <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-click adds nodes to the selection.</li>
+    <li>The selection toolbar groups them into a <code>subgraph</code> (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>G</kbd>, then type its title), ungroups them, and sets shape, colour or deletes for all of them.</li>
+  </ul>
+
+  <h2 id="keys">Keyboard</h2>
+  <table>
+    <tr><th>Keys</th><th>Does</th></tr>
+    <tr><td><kbd>Tab</kbd></td><td>Add a child of the selected node (along the flow) and type its label</td></tr>
+    <tr><td><kbd>Enter</kbd></td><td>Add a sibling (connected from the same parent); on an edge, edit its label</td></tr>
+    <tr><td><kbd>F2</kbd></td><td>Rename the selected node or edge label</td></tr>
+    <tr><td><kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd></td><td>Move the selection to the nearest node that way</td></tr>
+    <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Delete the selection</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Close the colour / shape menu, clear the selection, leave fullscreen</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Redo</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>G</kbd></td><td>Group the selection</td></tr>
+    <tr><td><kbd>N</kbd></td><td>New node</td></tr>
+    <tr><td><kbd>V</kbd></td><td>Edit mode on / off</td></tr>
+    <tr><td><kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd></td><td>Fit the diagram / fullscreen</td></tr>
+    <tr><td><kbd>E</kbd> / <kbd>T</kbd></td><td>Switch render engine (flowmaid / mermaid.js) / light–dark theme</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd></td><td>Save the open file</td></tr>
+  </table>
+
+  <h2 id="undo">Undo &amp; redo</h2>
+  <p>The <b>↶ ↷</b> buttons on the zoom bar and <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd> undo one history of the diagram's code, whatever changed it: typing (grouped by pauses), each canvas action, and an AI agent's edits in the live view. It works from the canvas, in fullscreen and with the code panel hidden, and nodes you dragged stay where you put them.</p>
+
+  <h2 id="view">View, files &amp; export</h2>
+  <ul>
+    <li><b>Pan</b> by dragging empty canvas; <b>zoom</b> with <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+scroll, pinch, or the zoom bar. <b>Fit</b> frames the whole diagram.</li>
+    <li><b>⛶</b> (<kbd>Shift</kbd>+<kbd>F</kbd>) shows the canvas alone, fullscreen where the browser allows it.</li>
+    <li><b>Open</b> a folder or <code>.mmd</code> files (or drop them on the page); <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd> saves back.</li>
+    <li><b>Download SVG</b>, or from its menu PNG (2×), copy as image, copy SVG code.</li>
+    <li>On a phone the controls sit in one scrolling strip at the top, menus open from the bottom, and edit and zoom share the bottom row.</li>
+  </ul>
+
+  <h2 id="ai">AI agents (MCP)</h2>
+  <p><b>flowmaid-mcp</b> is a <a href="https://modelcontextprotocol.io">Model Context Protocol</a> server: Claude Code, Claude Desktop, Cursor and other agents get tools to build, edit and render diagrams with this engine. It also serves this playground on your machine as a <b>live view</b> that stays in sync both ways: the agent's edits appear as you watch, and what you change there is what the agent reads next. The <b>AI</b> button in the playground shows the same setup.</p>
+
+  <h3>Install</h3>
+  <p>Download the archive for your system from the <a href="https://github.com/go-routine-id/flowmaid-web/releases/latest">latest release</a> and put <code>flowmaid-mcp</code> on your <code>PATH</code>, or build it with Rust:</p>
+  <pre><code>cargo install --locked --git https://github.com/go-routine-id/flowmaid-web flowmaid-mcp</code></pre>
+
+  <h3>Connect your agent</h3>
+  <p>Claude Code:</p>
+  <pre><code>claude mcp add flowmaid -- flowmaid-mcp</code></pre>
+  <p>Claude Desktop, Cursor and others (<code>mcpServers</code> in their config):</p>
+  <pre><code>{ "mcpServers": { "flowmaid": { "command": "flowmaid-mcp" } } }</code></pre>
+  <p>Then ask, for example: <i>"Draw our signup flow as a flowchart and open it in the live view."</i></p>
+
+  <h3>Tools</h3>
+  <table>
+    <tr><th>Tool</th><th>Does</th></tr>
+    <tr><td><code>get_diagram</code></td><td>The Mermaid source plus nodes, edges and groups with their ids, the live URL and who changed it last</td></tr>
+    <tr><td><code>set_diagram</code></td><td>Replace the whole source (any diagram type); parse errors change nothing</td></tr>
+    <tr><td><code>edit_diagram</code></td><td>Flowchart edits, all-or-nothing: add / rename / delete nodes, connect, update / delete edges, shape, colour, group, ungroup</td></tr>
+    <tr><td><code>render_diagram</code></td><td>A PNG (or SVG) to look at</td></tr>
+    <tr><td><code>open_live_view</code></td><td>Open the diagram in the browser, synced both ways</td></tr>
+    <tr><td><code>open_file</code></td><td>Bind a diagram to a <code>.mmd</code> file: written on every edit, re-read when it changes</td></tr>
+    <tr><td><code>list_diagrams</code></td><td>The documents in this session</td></tr>
+  </table>
+
+  <h3>Live view</h3>
+  <ul>
+    <li>Runs on <code>127.0.0.1</code> (port 7878 or the next free one; <code>FLOWMAID_PORT</code> sets it). The URL carries a session token, so other web pages can't read or change your diagrams.</li>
+    <li>The badge in the corner shows the connection and switches between the agent's documents.</li>
+    <li>An edit you make on top of an older copy (the agent changed it meanwhile) is refused rather than undoing the agent's edit, and the page says so.</li>
+  </ul>
+  <p class="note">More detail: <a href="https://github.com/go-routine-id/flowmaid-web/tree/main/mcp#readme">mcp/README.md</a>.</p>
+</main>
+</body>
+</html>

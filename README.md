@@ -28,16 +28,23 @@ Flowcharts can be edited straight on the canvas; every action is written back in
 
 The ⛶ button on the zoom bar (or Shift+F) shows the canvas alone, fullscreen where the browser allows it; Esc leaves.
 
+**Undo / redo**: ↶ ↷ on the zoom bar or Ctrl/⌘+Z, Ctrl/⌘+Shift+Z — one history for typing, canvas edits and an agent's live-view edits.
+
+The full walkthrough with every shortcut is the [editor guide](https://opensource.go-routine.com/flowmaid-web/guide.html) (`guide.html`).
+
 The **Edit** button (`V`) turns these canvas gestures off and on; it is on by default. Only the statements an action touches are rewritten (`flowedit.js`), and Ctrl/⌘+Z in the code panel undoes canvas edits too. Tests: `node tests/flowedit.test.mjs`.
 
 ## MCP server (AI agents + live view)
 
 [`mcp/`](mcp/) is a Rust MCP server that gives an AI agent tools to read, edit and render diagrams with this engine, and serves this playground locally as a live view that stays in sync both ways with what the agent sees. The edit logic both share lives in [`src/edit.rs`](src/edit.rs) (wasm for the page, native for the server). Setup and tools: [mcp/README.md](mcp/README.md).
 
+Get `flowmaid-mcp` from the [latest release](https://github.com/go-routine-id/flowmaid-web/releases/latest) (or `cargo install --locked --git https://github.com/go-routine-id/flowmaid-web flowmaid-mcp`), then:
+
 ```bash
-cargo install --locked --git https://github.com/go-routine-id/flowmaid-web flowmaid-mcp
 claude mcp add flowmaid -- flowmaid-mcp
 ```
+
+The playground's **AI** button shows the same setup.
 
 ## Building
 
