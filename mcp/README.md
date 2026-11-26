@@ -70,15 +70,37 @@ Shapes: `rect`, `rounded`, `stadium`, `subroutine`, `cylinder`, `circle`, `doubl
 
 The **Chat** button in the live view's badge sends what you type straight into the agent's session, together with what is selected on the canvas, so *"make this red"* needs no switching to the terminal. The agent answers with `reply_chat`.
 
-This uses Claude Code [channels](https://code.claude.com/docs/en/channels), a research preview: start Claude Code with
+This uses Claude Code [channels](https://code.claude.com/docs/en/channels), a research preview.
 
-```bash
-claude --dangerously-load-development-channels server:flowmaid
-```
+### Step by step
 
-and confirm the dialog. Without it the page still sends, but nothing reaches the session (the page says so after a minute). Messages carry the session token like every other sync request, and the server only listens on `127.0.0.1`. Messages are capped at 4000 characters.
+1. **Register the server once** (see [Setup](#setup)), e.g. `claude mcp add -s user flowmaid -- flowmaid-mcp`.
+2. **Start Claude Code with the channel loaded**, in an interactive session:
 
-The server answers `initialize` with protocol `2025-11-25`, the last revision with that handshake, because Claude Code only registers channels on it.
+   ```bash
+   claude --dangerously-load-development-channels server:flowmaid
+   ```
+
+   Pick *"I am using this for local development"* in the warning. The session then shows
+   `Channels (experimental) messages from server:flowmaid inject directly in this session`.
+   If it says `no MCP server configured with that name` instead, this `claude` reads a different config than the one
+   `flowmaid` was added to: run it with the same `CLAUDE_CONFIG_DIR` (or the same project for local scope).
+3. **Open the live view from that same session**: ask it *"open the live view"* (or any diagram request). Use the URL
+   *that* session gives you. Every Claude Code session runs its own `flowmaid-mcp`, on its own port (`7878`, then
+   `7879`, …) with its own token, and chat only reaches the session whose server served the page.
+4. **Select and ask**: turn on edit mode (flowcharts), select a node, several nodes or an edge, open **Chat** in the
+   live badge and type, e.g. *"make this green"*. Enter sends, Shift+Enter adds a line.
+5. The message shows up in the session as a `<channel source="flowmaid" doc="…" selection="…">` message; the agent
+   edits the diagram (you see it change) and answers with `reply_chat`, which appears in the chat panel.
+
+### Good to know
+
+- Without the flag the page still sends, but nothing reaches a session; after a minute without an answer the panel
+  says how to start it. `-p` / non-interactive runs ignore the flag.
+- Messages carry the session token like every other sync request, the server only listens on `127.0.0.1`, and a
+  message is at most 4000 characters.
+- The server answers `initialize` with protocol `2025-11-25`, the last revision with that handshake, because Claude
+  Code only registers channels on it.
 
 ## Development
 
