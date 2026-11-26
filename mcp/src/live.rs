@@ -96,6 +96,7 @@ pub async fn start(store: Store) -> std::io::Result<Live> {
         .route("/__live.js", get(|| async { js(LIVE_JS) }))
         .route("/__events", get(events))
         .route("/__source", post(source))
+        .route("/__docs", get(docs))
         .with_state(App { store, live: live.clone() });
     tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, app).await {
@@ -166,6 +167,21 @@ async fn events(
         }
     });
     Ok(Sse::new(first.chain(rest)).keep_alive(KeepAlive::default()))
+}
+
+/// The session's documents, for the page's document switcher.
+async fn docs(State(app): State<App>, Query(q): Query<Q>) -> Response {
+    if let Err(r) = authed(&app, &q) {
+        return r.into_response();
+    }
+    let list: Vec<serde_json::Value> = app
+        .store
+        .list()
+        .iter()
+        .map(|d| serde_json::json!({ "doc": d.name, "version": d.version, "type": crate::engine::diagram_type(&d.source) }))
+        .collect();
+    ([(header::CONTENT_TYPE, "application/json"), (header::CACHE_CONTROL, "no-store")], serde_json::json!(list).to_string())
+        .into_response()
 }
 
 #[derive(Deserialize)]

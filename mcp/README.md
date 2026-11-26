@@ -9,11 +9,15 @@ One self-contained binary: the engine runs natively, the edit logic is the same 
 
 ## Install
 
+Download the archive for your system (Linux x86_64 / arm64, macOS Apple silicon / Intel, Windows x86_64) from the [latest release](https://github.com/go-routine-id/flowmaid-web/releases/latest), check it against its `.sha256`, and put `flowmaid-mcp` on your `PATH`. Or build it with Rust:
+
 ```bash
 cargo install --locked --git https://github.com/go-routine-id/flowmaid-web flowmaid-mcp
 ```
 
 (or `cargo build -p flowmaid-mcp --release` in a checkout; the binary lands in `target/release/`).
+
+Releases are built by `.github/workflows/release.yml` when a tag `mcp-vX.Y.Z` matching `mcp/Cargo.toml`'s version is pushed.
 
 ## Setup
 
@@ -57,6 +61,7 @@ Shapes: `rect`, `rounded`, `stadium`, `subroutine`, `cylinder`, `circle`, `doubl
 - The URL carries a random session token; requests without it are refused, so other web pages cannot read or change your diagrams. A restarted server has a new token: reopen the view from the agent.
 - An edit made in the browser on top of an older copy (the agent changed it meanwhile) is refused rather than undoing the agent's edit, and the page says so.
 - Node positions you drag in the browser stay where they are when the agent edits.
+- The badge in the corner shows the connection and switches between the session's documents; undo / redo in the page reach the agent like any other edit.
 
 ## Development
 

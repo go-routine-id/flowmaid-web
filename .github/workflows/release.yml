@@ -1,0 +1,86 @@
+name: Release flowmaid-mcp
+
+# Push a tag like `mcp-v0.1.0` (matching mcp/Cargo.toml's version) to
+# build flowmaid-mcp for Linux, macOS and Windows and publish a GitHub
+# release with the archives and their SHA-256 sums.
+on:
+  push:
+    tags: ["mcp-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. mcp-v0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu, archive: tar.gz }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, archive: tar.gz }
+          - { os: macos-latest, target: aarch64-apple-darwin, archive: tar.gz }
+          - { os: macos-latest, target: x86_64-apple-darwin, archive: tar.gz }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, archive: zip }
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Tag matches mcp/Cargo.toml
+        shell: bash
+        run: |
+          want="mcp-v$(sed -n 's/^version = "\(.*\)"$/\1/p' mcp/Cargo.toml | head -1)"
+          [ "$TAG" = "$want" ] || { echo "tag $TAG but mcp/Cargo.toml says $want"; exit 1; }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build -p flowmaid-mcp --release --locked --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          name="flowmaid-mcp-${TAG#mcp-v}-${{ matrix.target }}"
+          mkdir "$name"
+          exe=flowmaid-mcp; [ "${{ runner.os }}" = Windows ] && exe=flowmaid-mcp.exe
+          cp "target/${{ matrix.target }}/release/$exe" mcp/README.md LICENSE "$name/"
+          if [ "${{ matrix.archive }}" = zip ]; then
+            7z a "$name.zip" "$name" >/dev/null
+            file="$name.zip"
+          else
+            tar czf "$name.tar.gz" "$name"
+            file="$name.tar.gz"
+          fi
+          if command -v sha256sum >/dev/null; then sha256sum "$file" > "$file.sha256"; else shasum -a 256 "$file" > "$file.sha256"; fi
+          echo "FILE=$file" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            ${{ env.FILE }}
+            ${{ env.FILE }}.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        run: |
+          notes="flowmaid MCP server ${TAG#mcp-v}: download the archive for your system, put \`flowmaid-mcp\` on your PATH, then e.g. \`claude mcp add flowmaid -- flowmaid-mcp\`. See mcp/README.md."
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber -R "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" dist/* --title "flowmaid-mcp ${TAG#mcp-v}" --notes "$notes" -R "$GITHUB_REPOSITORY"
+          fi
