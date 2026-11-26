@@ -1346,7 +1346,7 @@ view.addEventListener("pointerdown", (ev) => {
     ev.preventDefault();
     return;
   }
-  drag = { i, cx: ev.clientX, cy: ev.clientY };
+  drag = { i, cx: ev.clientX, cy: ev.clientY, moved: false };
   view.setPointerCapture(ev.pointerId);
   view.style.cursor = "grabbing";
   ev.preventDefault();
@@ -1382,6 +1382,7 @@ view.addEventListener("pointermove", (ev) => {
   }
   const s = svgScale();
   if (!s) return;
+  drag.moved = true;
   good.pos[drag.i * 2] += (ev.clientX - drag.cx) * s.sx;
   good.pos[drag.i * 2 + 1] += (ev.clientY - drag.cy) * s.sy;
   drag.cx = ev.clientX;
@@ -1398,6 +1399,7 @@ for (const t of ["pointerup", "pointercancel"]) {
       select({ type: "node", id: narrowTo.id });
     }
     narrowTo = null;
+    if (drag?.moved) histRecord(true); // a move is an undo step
     drag = null;
     pan = null;
     view.style.cursor = "default";
@@ -2408,10 +2410,20 @@ new ResizeObserver(syncHighlightBox).observe(editor);
 // (grouped by pauses), canvas edits (one step each), agent edits in the
 // live view. Ctrl/⌘+Z works the same in the code panel, on the canvas,
 // in fullscreen and with the code panel hidden; dragged positions stay.
+// Each step is { src, pos }: the code plus where the nodes stood, so
+// dragging a node or Auto layout is a step too (positions aren't in the
+// code).
 var hist = { stack: [], i: -1, timer: 0, applying: false };
 const undoBtn = document.getElementById("undo"), redoBtn = document.getElementById("redo");
+// Node positions now: remembered drags plus the current layout.
+function snapPos() {
+  const m = new Map(savedPos);
+  if (good) good.keys.forEach((k, i) => m.set(k, [good.pos[i * 2], good.pos[i * 2 + 1]]));
+  return m;
+}
+const histTop = () => hist.stack[hist.i];
 function syncUndoUI() {
-  const pending = hist.i >= 0 && editor.value !== hist.stack[hist.i];
+  const pending = hist.i >= 0 && editor.value !== histTop().src;
   undoBtn.disabled = !(hist.i > 0 || pending);
   redoBtn.disabled = pending || hist.i >= hist.stack.length - 1;
 }
@@ -2419,21 +2431,27 @@ function syncUndoUI() {
 // switching the render engine).
 function histReset(src) {
   clearTimeout(hist.timer);
-  if (!(hist.i >= 0 && src === hist.stack[hist.i])) {
-    hist.stack = [src];
+  if (!(hist.i >= 0 && src === histTop().src)) {
+    hist.stack = [{ src, pos: new Map() }];
     hist.i = 0;
   }
   syncUndoUI();
 }
-function histRecord() {
+// Record the current state as a step if the code changed, or always with
+// `moved` (positions changed: a drag, Auto layout).
+function histRecord(moved = false) {
   clearTimeout(hist.timer);
-  const s = editor.value;
-  if (hist.i < 0) { hist.stack = [s]; hist.i = 0; }
-  else if (s !== hist.stack[hist.i]) {
+  const src = editor.value;
+  if (hist.i < 0) { hist.stack = [{ src, pos: snapPos() }]; hist.i = 0; }
+  else if (src !== histTop().src || moved) {
     hist.stack.splice(hist.i + 1);
-    hist.stack.push(s);
+    hist.stack.push({ src, pos: snapPos() });
     if (hist.stack.length > 300) hist.stack.shift();
     hist.i = hist.stack.length - 1;
+  } else {
+    // Same code: keep the step's positions current (e.g. a node an edit
+    // just placed), so going back here restores them.
+    histTop().pos = snapPos();
   }
   syncUndoUI();
 }
@@ -2448,8 +2466,14 @@ function histGo(d) {
   const j = hist.i + d;
   if (j < 0 || j >= hist.stack.length) return;
   hist.i = j;
+  const step = histTop();
+  // Positions of that step, then the code; rebuild without carrying the
+  // current layout over (good = null).
+  savedPos.clear();
+  step.pos.forEach((v, k) => savedPos.set(k, v));
+  good = null;
   hist.applying = true;
-  editor.value = hist.stack[j];
+  editor.value = step.src;
   // The usual input path: highlight, file dirty state, live-view sync.
   editor.dispatchEvent(new Event("input"));
   hist.applying = false;
@@ -2595,6 +2619,7 @@ document.getElementById("relayout").addEventListener("click", () => {
   // they don't resurrect on the next edit.
   good.keys.forEach((k) => savedPos.delete(k));
   render();
+  histRecord(true);
 });
 
 function downloadBlob(text, type, name) {
