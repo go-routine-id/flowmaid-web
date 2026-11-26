@@ -15,7 +15,10 @@ use live::Live;
 use ops::{apply_ops, Op};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerConfig},
+    model::{
+        CallToolResult, ContentBlock, CustomNotification, ExperimentalCapabilities, Implementation, ProtocolVersion,
+        ServerCapabilities, ServerConfig, ServerNotification,
+    },
     schemars::{self, JsonSchema},
     tool, tool_handler, tool_router, ServerHandler, ServiceExt,
 };
@@ -29,7 +32,10 @@ get_diagram to learn node/edge ids, edit_diagram with a list of ops (flowcharts)
 source (any type), then render_diagram to look at it. open_live_view opens the diagram in the user's browser; it \
 stays in sync both ways, so the user may also edit it there. Call get_diagram again before editing if the user may \
 have changed it (see changed_by / version). When the user points at something on the canvas (\"this node\", \"the \
-selected ones\"), call get_selection.";
+selected ones\"), call get_selection. \
+The user can also chat from the live view: when Claude Code loads this server as a channel, those messages arrive as \
+<channel source=\"flowmaid\" doc=\"…\" selection=\"…\"> (selection is what was selected when they sent it, as JSON). \
+Act on them with these tools, then answer with reply_chat, passing the same doc.";
 
 #[derive(Clone)]
 struct Flowmaid {
@@ -85,6 +91,14 @@ struct LiveArgs {
     doc: Option<String>,
     /// Launch the browser (default true); false just returns the URL.
     open: Option<bool>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ReplyArgs {
+    /// The doc the chat message came from (its `doc` attribute).
+    doc: String,
+    /// Your answer, shown in the live view's chat.
+    text: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -190,6 +204,27 @@ impl Flowmaid {
         m.insert("diagram_version".into(), json!(d.version));
         m.insert("live_viewers".into(), json!(live.viewers(&d.name)));
         json_result(&v)
+    }
+
+    #[tool(
+        description = "Answer a chat message the user sent from the live view (it arrived as a flowmaid channel message): the text appears in the chat panel of the pages showing that doc. Keep it short; the diagram itself shows what you changed."
+    )]
+    async fn reply_chat(&self, Parameters(a): Parameters<ReplyArgs>) -> CallToolResult {
+        let Some(live) = &self.live else {
+            return fail("The live view server could not start (see the server's stderr).");
+        };
+        let name = match doc_name(&Some(a.doc)) {
+            Ok(n) => n,
+            Err(e) => return e,
+        };
+        if a.text.trim().is_empty() {
+            return fail("Give some text.");
+        }
+        if live.reply(&name, &a.text) {
+            text("Shown in the live view.")
+        } else {
+            text("No live view is open on this doc right now; the reply was not shown.")
+        }
     }
 
     #[tool(
@@ -349,9 +384,21 @@ impl Flowmaid {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for Flowmaid {
     fn get_info(&self) -> ServerConfig {
-        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+        // `claude/channel`: Claude Code may load this server as a channel,
+        // so chat typed in the live view reaches the session.
+        let mut experimental = ExperimentalCapabilities::new();
+        experimental.insert("claude/channel".into(), Default::default());
+        ServerConfig::new(ServerCapabilities::builder().enable_experimental_with(experimental).enable_tools().build())
+            .with_protocol_version(ProtocolVersion::LATEST_WITH_INITIALIZE)
             .with_server_info(Implementation::new("flowmaid", env!("CARGO_PKG_VERSION")))
             .with_instructions(INSTRUCTIONS)
+    }
+
+    // Claude Code registers channels only on the initialize handshake,
+    // which protocol 2026-07-28 dropped: stay on the last one that has it.
+    fn supported_protocol_versions(&self) -> std::borrow::Cow<'static, [ProtocolVersion]> {
+        let v = ProtocolVersion::KNOWN_VERSIONS;
+        std::borrow::Cow::Borrowed(&v[..v.iter().position(|p| *p == ProtocolVersion::LATEST_WITH_INITIALIZE).unwrap() + 1])
     }
 }
 
@@ -384,14 +431,14 @@ async fn main() {
     }
     let store = Store::new();
     store.spawn_file_poller();
-    let live = match live::start(store.clone()).await {
-        Ok(l) => {
+    let (live, chat_rx) = match live::start(store.clone()).await {
+        Ok((l, rx)) => {
             eprintln!("flowmaid-mcp: live view at {}", l.url("default"));
-            Some(l)
+            (Some(l), Some(rx))
         }
         Err(e) => {
             eprintln!("flowmaid-mcp: live view unavailable: {e}");
-            None
+            (None, None)
         }
     };
     let server = match Flowmaid::new(store, live).serve(rmcp::transport::stdio()).await {
@@ -401,6 +448,23 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    if let Some(mut rx) = chat_rx {
+        let peer = server.peer().clone();
+        tokio::spawn(async move {
+            while let Some(m) = rx.recv().await {
+                let mut meta = Map::new();
+                meta.insert("doc".into(), json!(m.doc));
+                if let Some(sel) = &m.selection {
+                    meta.insert("selection".into(), json!(serde_json::to_string(sel).unwrap_or_default()));
+                }
+                let params = json!({ "content": m.text, "meta": meta });
+                let n = CustomNotification::new("notifications/claude/channel", Some(params));
+                if let Err(e) = peer.send_notification(ServerNotification::CustomNotification(n)).await {
+                    eprintln!("flowmaid-mcp: chat not delivered: {e}");
+                }
+            }
+        });
+    }
     let _ = server.waiting().await;
     // The live view would keep the process alive; a stdio server ends
     // with its client.
