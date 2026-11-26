@@ -1458,6 +1458,7 @@ function syncEditUI() {
   if (sel && !selExists()) sel = null;
   editDel.disabled = !(ok && sel);
   updateOverlay();
+  announceSel();
 }
 
 function selExists() {
@@ -1476,6 +1477,16 @@ function select(next) {
   editDel.disabled = !(editActive() && sel);
   decorateEdges();
   updateOverlay();
+  announceSel();
+}
+
+// Tell listeners (the MCP live view) what is selected, once per change.
+var announced = "null";
+function announceSel() {
+  const s = JSON.stringify(sel);
+  if (s === announced) return;
+  announced = s;
+  dispatchEvent(new CustomEvent("flowmaid:select", { detail: sel && JSON.parse(s) }));
 }
 
 // Give every edge a fat invisible twin so it can be clicked, and tag it

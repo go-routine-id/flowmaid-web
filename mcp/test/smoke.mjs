@@ -24,7 +24,7 @@ const safeJson = (t) => { try { return JSON.parse(t); } catch { return null; } }
 
 const { tools } = await client.listTools();
 assert.deepEqual(tools.map((t) => t.name).sort(),
-  ["edit_diagram", "get_diagram", "list_diagrams", "open_file", "open_live_view", "render_diagram", "set_diagram"]);
+  ["edit_diagram", "get_diagram", "get_selection", "list_diagrams", "open_file", "open_live_view", "render_diagram", "set_diagram"]);
 
 // get
 let g = (await call("get_diagram")).json;

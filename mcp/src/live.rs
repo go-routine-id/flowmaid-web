@@ -35,7 +35,28 @@ pub struct Live {
     pub base: String,
     token: String,
     viewers: Arc<Mutex<HashMap<String, usize>>>,
+    selections: Arc<Mutex<HashMap<String, Selected>>>,
 }
+
+/// What the user has selected on a doc's canvas, as the page reported it.
+#[derive(Clone, Deserialize, serde::Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum Selection {
+    Node { id: String },
+    Nodes { ids: Vec<String> },
+    Edge { from: String, to: String, nth: usize },
+}
+
+#[derive(Clone)]
+pub struct Selected {
+    pub selection: Option<Selection>,
+    /// The doc version the page was showing when it reported this.
+    pub version: Option<u64>,
+    /// Milliseconds since the Unix epoch.
+    pub at: u128,
+}
+
+const MAX_SELECTED: usize = 500;
 
 impl Live {
     pub fn url(&self, doc: &str) -> String {
@@ -43,6 +64,9 @@ impl Live {
     }
     pub fn viewers(&self, doc: &str) -> usize {
         self.viewers.lock().unwrap().get(doc).copied().unwrap_or(0)
+    }
+    pub fn selection(&self, doc: &str) -> Option<Selected> {
+        self.selections.lock().unwrap().get(doc).cloned()
     }
 }
 
@@ -86,7 +110,7 @@ pub async fn start(store: Store) -> std::io::Result<Live> {
         }
     };
     let addr = listener.local_addr()?;
-    let live = Live { base: format!("http://{host}:{}/", addr.port()), token: token(), viewers: Arc::default() };
+    let live = Live { base: format!("http://{host}:{}/", addr.port()), token: token(), viewers: Arc::default(), selections: Arc::default() };
     let app = Router::new()
         .route("/", get(index))
         .route("/index.html", get(index))
@@ -97,6 +121,7 @@ pub async fn start(store: Store) -> std::io::Result<Live> {
         .route("/__events", get(events))
         .route("/__source", post(source))
         .route("/__docs", get(docs))
+        .route("/__selection", post(selection))
         .with_state(App { store, live: live.clone() });
     tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, app).await {
@@ -219,4 +244,31 @@ async fn source(State(app): State<App>, Query(q): Query<Q>, body: Bytes) -> Resp
             .into_response(),
         Err(SetError::Write(e)) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
+}
+
+#[derive(Deserialize)]
+struct SelPost {
+    selection: Option<Selection>,
+    version: Option<u64>,
+}
+
+async fn selection(State(app): State<App>, Query(q): Query<Q>, body: Bytes) -> Response {
+    let doc = match authed(&app, &q) {
+        Ok(d) => d,
+        Err(r) => return r.into_response(),
+    };
+    if body.len() > MAX_BODY {
+        return (StatusCode::PAYLOAD_TOO_LARGE, "too large").into_response();
+    }
+    let Ok(p) = serde_json::from_slice::<SelPost>(&body) else {
+        return (StatusCode::BAD_REQUEST, "expected {selection, version}").into_response();
+    };
+    if let Some(Selection::Nodes { ids }) = &p.selection {
+        if ids.len() > MAX_SELECTED {
+            return (StatusCode::PAYLOAD_TOO_LARGE, "too many selected").into_response();
+        }
+    }
+    let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+    app.live.selections.lock().unwrap().insert(doc, Selected { selection: p.selection, version: p.version, at });
+    StatusCode::NO_CONTENT.into_response()
 }

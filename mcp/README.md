@@ -43,7 +43,8 @@ Then ask the agent something like *"draw the signup flow and open it in the live
 
 | Tool | What it does |
 |---|---|
-| `get_diagram` | Mermaid source plus parsed nodes (id, label, shape, fill, group), edges (from, to, nth, label, style) and groups, the live URL, and who changed it last (`agent`, `user (live view)`, `file`). |
+| `get_diagram` | Mermaid source plus parsed nodes (id, label, shape, fill, group), edges (from, to, nth, label, style) and groups, the live URL, who changed it last (`agent`, `user (live view)`, `file`), and the live view's `selection`. |
+| `get_selection` | What the user has selected on the live view canvas: a node, several nodes or an edge, or `null`, with the diagram version the page showed. Lets the agent act on "this node". Selecting needs edit mode on (flowcharts). |
 | `set_diagram` | Replace the whole source (any diagram type). Checked with the engine first; parse errors come back with a line number and change nothing. |
 | `edit_diagram` | A list of flowchart edits, applied in order and all-or-nothing: `add_node`, `rename_node`, `delete_node`, `connect`, `update_edge`, `delete_edge`, `set_shape`, `set_color`, `group`, `ungroup`. Only the touched lines are rewritten. |
 | `render_diagram` | PNG (default, rendered natively with resvg and your system fonts) or SVG of a document, or of any `source` passed in. |
@@ -61,6 +62,7 @@ Shapes: `rect`, `rounded`, `stadium`, `subroutine`, `cylinder`, `circle`, `doubl
 - The URL carries a random session token; requests without it are refused, so other web pages cannot read or change your diagrams. A restarted server has a new token: reopen the view from the agent.
 - An edit made in the browser on top of an older copy (the agent changed it meanwhile) is refused rather than undoing the agent's edit, and the page says so.
 - Node positions you drag in the browser stay where they are when the agent edits.
+- What you select on the canvas (click, Shift/Ctrl+click, an edge) is reported to the server, kept in memory only, so the agent can ask with `get_selection`. Clicks that don't change the selection, hovering and the pointer position are not sent.
 - The badge in the corner shows the connection and switches between the session's documents; undo / redo in the page reach the agent like any other edit.
 
 ## Development

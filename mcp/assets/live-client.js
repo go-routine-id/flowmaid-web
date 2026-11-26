@@ -163,3 +163,18 @@ editor.addEventListener("input", () => { if (!applying) push(); });
 // Some changes (examples, opened files) set the text without an input
 // event; catch those too.
 setInterval(() => { if (!applying && serverSrc !== null && editor.value !== serverSrc) push(); }, 800);
+
+// ── Selection → server ──
+// What is selected on the canvas, so the agent can act on "this node".
+let selTimer = 0, selNow = null;
+function pushSel() {
+  clearTimeout(selTimer);
+  selTimer = setTimeout(() => {
+    fetch(`/__selection?${q}`, {
+      method: "POST",
+      body: JSON.stringify({ selection: selNow, client, version: serverVersion }),
+      headers: { "content-type": "application/json" },
+    }).catch(() => {});
+  }, 150);
+}
+addEventListener("flowmaid:select", (e) => { selNow = e.detail; pushSel(); });
