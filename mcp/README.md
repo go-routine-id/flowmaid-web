@@ -51,6 +51,7 @@ Then ask the agent something like *"draw the signup flow and open it in the live
 | `open_live_view` | Opens the diagram in the browser and returns the URL. |
 | `open_file` | Binds a document to a `.mmd` file: loaded on open, written on every edit, re-read when another program changes it. |
 | `list_diagrams` | The documents in this session. |
+| `reply_chat` | Answer a message the user typed in the live view's chat (see below); the text shows up in that page. |
 
 Documents are named (`doc`, default `"default"`); each has its own live URL (`?doc=name`).
 
@@ -64,6 +65,20 @@ Shapes: `rect`, `rounded`, `stadium`, `subroutine`, `cylinder`, `circle`, `doubl
 - Node positions you drag in the browser stay where they are when the agent edits.
 - What you select on the canvas (click, Shift/Ctrl+click, an edge) is reported to the server, kept in memory only, so the agent can ask with `get_selection`. Clicks that don't change the selection, hovering and the pointer position are not sent.
 - The badge in the corner shows the connection and switches between the session's documents; undo / redo in the page reach the agent like any other edit.
+
+## Chat from the live view (Claude Code channels)
+
+The **Chat** button in the live view's badge sends what you type straight into the agent's session, together with what is selected on the canvas, so *"make this red"* needs no switching to the terminal. The agent answers with `reply_chat`.
+
+This uses Claude Code [channels](https://code.claude.com/docs/en/channels), a research preview: start Claude Code with
+
+```bash
+claude --dangerously-load-development-channels server:flowmaid
+```
+
+and confirm the dialog. Without it the page still sends, but nothing reaches the session (the page says so after a minute). Messages carry the session token like every other sync request, and the server only listens on `127.0.0.1`. Messages are capped at 4000 characters.
+
+The server answers `initialize` with protocol `2025-11-25`, the last revision with that handshake, because Claude Code only registers channels on it.
 
 ## Development
 
