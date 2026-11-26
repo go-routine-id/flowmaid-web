@@ -218,6 +218,8 @@
   #zoombar #zoom-fit { width: auto; padding: 0 11px; font-size: 10.5px; }
   #zoombar .pct { min-width: 54px; font-size: 10.5px; color: var(--muted); }
   #zoombar .pct:hover { color: var(--ink); }
+  #zoombar #undo svg, #zoombar #redo svg { width: 15px; height: 15px; display: block; margin: auto; }
+  #zoombar button:disabled { color: var(--line2); cursor: default; background: transparent; }
   #doc-title {
     left: 14px; top: 14px; max-width: calc(100% - 28px);
     padding: 8px 12px; font: 500 12px var(--mono); color: var(--ink);
@@ -316,7 +318,9 @@
   #stage .edge-hit { stroke: transparent; stroke-width: 14; fill: none; cursor: pointer; pointer-events: stroke; }
   #stage path.edge-sel { stroke: #8839ef; stroke-width: 3.5; }
   #edit-bar {
-    position: absolute; z-index: 5; left: 14px; bottom: 14px; max-width: calc(100% - 230px);
+    /* --zb: the zoom bar's width, kept current by script, so the two
+       bottom bars never overlap whatever buttons the zoom bar shows. */
+    position: absolute; z-index: 5; left: 14px; bottom: 14px; max-width: calc(100% - var(--zb, 270px) - 40px);
     display: none; align-items: center; gap: 8px; padding: 5px 5px 5px 12px;
     border: 1px solid var(--line2); background: var(--bg);
     font: 400 11px var(--body); color: var(--dim);
@@ -325,9 +329,13 @@
   #edit-bar.off #edit-add, #edit-bar.off #edit-del { display: none; }
   #edit-bar button { height: 28px; padding: 0 10px; font-size: 11px; white-space: nowrap; }
   #edit-hint { line-height: 1.35; }
+  /* On a narrow canvas the hint would wrap into a tall block over the
+     diagram: it moves to the bar's tooltip instead. */
+  #view { container-type: inline-size; }
+  @container (max-width: 860px) { #edit-hint { display: none; } }
   @media (max-width: 700px) {
     /* Edit bar bottom-left, zoom bar bottom-right, one row. */
-    #edit-bar { left: 8px; bottom: 8px; max-width: calc(100% - 170px); padding: 3px; gap: 4px; }
+    #edit-bar { left: 8px; bottom: 8px; max-width: calc(100% - var(--zb, 150px) - 22px); padding: 3px; gap: 4px; }
     #edit-bar button { height: 34px; padding: 0 9px; font-size: 10px; }
     #edit-hint { display: none; }
     /* With the hint hidden, a bar with nothing to offer is just a box. */
@@ -336,7 +344,8 @@
     #zoombar button { width: 34px; height: 40px; }
     #zoombar #zoom-fit { padding: 0 9px; }
   }
-  @media (max-width: 400px) { #zoombar .pct { display: none; } }
+  /* Tiny screens: undo/redo stay; zoom in/out go (pinch does that). */
+  @media (max-width: 400px) { #zoombar .pct, #zoom-in, #zoom-out { display: none; } }
   /* Fingers: bigger targets on the canvas toolbars. */
   @media (pointer: coarse) {
     .tools button { width: 40px; height: 38px; }
@@ -350,6 +359,30 @@
     /* 16px keeps iOS from zooming the page when the box takes focus. */
     #rename:not(.inline) { height: 42px; font-size: 16px; }
   }
+  /* ── "Draw with an AI agent" dialog ── */
+  #ai-dialog {
+    width: min(620px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto;
+    padding: 22px 24px; border: 1px solid var(--line2); background: var(--bg); color: var(--ink);
+    font: 400 13.5px/1.55 var(--body); box-shadow: 0 18px 50px rgb(0 0 0 / .25);
+  }
+  #ai-dialog::backdrop { background: rgb(0 0 0 / .35); }
+  #ai-dialog h2 { margin: 0 32px 10px 0; font: 800 20px var(--display); letter-spacing: -.02em; }
+  #ai-dialog h3 { margin: 0 0 4px; font: 600 13.5px var(--body); }
+  #ai-dialog ol { padding-left: 20px; margin: 14px 0; }
+  #ai-dialog li { margin-bottom: 14px; }
+  #ai-dialog li::marker { font-weight: 700; color: var(--accent); }
+  #ai-dialog p { margin: 4px 0 8px; color: var(--dim); }
+  #ai-dialog a { color: var(--accent); }
+  #ai-dialog code { font: 500 12px var(--mono); }
+  .ai-cmd { display: flex; align-items: stretch; border: 1px solid var(--line2); background: var(--panel); margin: 4px 0 8px; }
+  .ai-cmd code { flex: 1; min-width: 0; padding: 8px 10px; overflow-x: auto; white-space: nowrap; color: var(--ink); }
+  .ai-cmd button { border: 0; border-left: 1px solid var(--line2); padding: 0 12px; font-size: 10px; }
+  .ai-close { position: absolute; top: 12px; right: 12px; margin: 0; }
+  .ai-close button { border: 0; padding: 4px 8px; font-size: 14px; }
+  #ai-dialog .ai-live { padding: 8px 10px; border-left: 3px solid var(--ok); background: var(--panel); color: var(--ink); }
+  #ai-dialog .ai-more { margin-top: 0; }
+  body.live #ai-btn { color: var(--ok); border-color: var(--ok); }
+
   /* ── Fullscreen: the canvas alone ── */
   #zoom-full svg { width: 15px; height: 15px; display: block; margin: auto; }
   #zoom-full .fs-off, body.fullscreen #zoom-full .fs-on { display: none; }
@@ -497,7 +530,7 @@
       content: ""; position: absolute; top: 0; right: 0; bottom: 0; width: 30px; pointer-events: none;
       background: linear-gradient(to right, transparent, var(--bg) 80%);
     }
-    #examples-dd { order: 1; } #open { order: 2; } #save { order: 3; } #edit-mode { order: 4; }
+    #examples-dd { order: 1; } #open { order: 2; } #save { order: 3; } #edit-mode { order: 4; } #ai-btn { order: 6; }
     #export-dd { order: 5; } #relayout { order: 6; } #engine { order: 7; } .modes { order: 8; }
     header .actions > a { order: 9; padding-inline: 4px; }
     button { font-size: 10.5px; padding: 7px 10px; letter-spacing: .05em; }
@@ -559,6 +592,7 @@
   <button id="engine" title="Switch render engine (E)">Engine<span class="tag">flowmaid</span></button>
   <button id="relayout">Auto layout</button>
   <button id="edit-mode" aria-pressed="false" title="Visual edit: add, rename, connect and delete nodes on the canvas (V)">Edit</button>
+  <button id="ai-btn" title="Let an AI agent draw and edit here (MCP server)">AI</button>
   <div class="dd split" id="export-dd">
     <button id="download" title="Download SVG">Download SVG</button>
     <button id="export-btn" class="dd-btn" aria-haspopup="menu" aria-expanded="false" aria-label="More export options" title="More export options">
@@ -640,6 +674,8 @@
       <button id="edit-del" title="Delete the selection (Delete)" disabled>Delete</button>
     </div>
     <div id="zoombar">
+      <button id="undo" title="Undo (Ctrl/⌘+Z)" aria-label="Undo" disabled><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5.5 3.5L2.5 6.5l3 3"/><path d="M2.5 6.5h7a4 4 0 0 1 0 8H7"/></svg></button>
+      <button id="redo" title="Redo (Ctrl/⌘+Shift+Z or Ctrl+Y)" aria-label="Redo" disabled><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 3.5l3 3-3 3"/><path d="M13.5 6.5h-7a4 4 0 0 0 0 8H9"/></svg></button>
       <button id="zoom-out" title="Zoom out" aria-label="Zoom out">−</button>
       <button id="zoom-pct" class="pct" title="Reset to 100%">100%</button>
       <button id="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
@@ -649,6 +685,31 @@
   </div>
 </main>
 <div id="error"></div>
+<dialog id="ai-dialog" aria-labelledby="ai-title">
+  <form method="dialog" class="ai-close"><button aria-label="Close">✕</button></form>
+  <h2 id="ai-title">Draw with an AI agent</h2>
+  <p class="ai-live" hidden></p>
+  <p><b>flowmaid-mcp</b> is an MCP server: Claude Code, Claude Desktop, Cursor and other agents get tools to build, edit and render diagrams with this engine, and it opens this playground on your machine as a <b>live view</b> — the agent's edits appear as you watch, and what you change here is what the agent reads next.</p>
+  <ol>
+    <li>
+      <h3>Install</h3>
+      <p>Download the binary for your system from the <a href="https://github.com/go-routine-id/flowmaid-web/releases/latest" target="_blank" rel="noopener">latest release</a> and put it on your <code>PATH</code>, or build it with Rust:</p>
+      <div class="ai-cmd"><code>cargo install --locked --git https://github.com/go-routine-id/flowmaid-web flowmaid-mcp</code><button data-copy>Copy</button></div>
+    </li>
+    <li>
+      <h3>Connect your agent</h3>
+      <p>Claude Code:</p>
+      <div class="ai-cmd"><code>claude mcp add flowmaid -- flowmaid-mcp</code><button data-copy>Copy</button></div>
+      <p>Claude Desktop, Cursor and others (<code>mcpServers</code> in their config):</p>
+      <div class="ai-cmd"><code>{ "mcpServers": { "flowmaid": { "command": "flowmaid-mcp" } } }</code><button data-copy>Copy</button></div>
+    </li>
+    <li>
+      <h3>Ask</h3>
+      <p>For example: <i>"Draw our signup flow as a flowchart and open it in the live view."</i></p>
+    </li>
+  </ol>
+  <p class="ai-more"><a href="https://github.com/go-routine-id/flowmaid-web/tree/main/mcp#readme" target="_blank" rel="noopener">Tools, options and details →</a></p>
+</dialog>
 <div id="drop-hint">Drop .mmd files or a folder to open them</div>
 <footer>
   <span id="version">loading engine…</span>
@@ -1386,6 +1447,7 @@ function syncEditUI() {
   editBtn.setAttribute("aria-pressed", String(editMode));
   document.body.classList.toggle("editing", editMode);
   editBar.classList.toggle("off", !ok);
+  editBar.title = ok ? HINT : "";
   editHint.textContent = ok ? HINT
     : engine !== "flowmaid" ? "Visual editing needs the flowmaid engine — press E to switch."
     : "Visual editing works on flowchart / graph diagrams.";
@@ -1506,6 +1568,8 @@ function updateOverlay() {
 // handed out still mean the same thing in the text. Returns success.
 function applySource(edit) {
   if (renaming) commitRename();
+  // Typing not yet in the history becomes its own step first.
+  histRecord();
   if (!good || editor.value !== good.src) {
     clearTimeout(deb);
     rebuild(editor.value);
@@ -1535,6 +1599,7 @@ function applySource(edit) {
   }
   clearTimeout(deb);
   rebuild(editor.value);
+  histRecord();
   view.focus({ preventScroll: true });
   return true;
 }
@@ -2337,9 +2402,100 @@ function syncHighlightBox() {
 editor.addEventListener("scroll", () => { hl.scrollTop = editor.scrollTop; });
 new ResizeObserver(syncHighlightBox).observe(editor);
 
+// ── Undo / redo ──
+// One history of the source text for everything that changes it: typing
+// (grouped by pauses), canvas edits (one step each), agent edits in the
+// live view. Ctrl/⌘+Z works the same in the code panel, on the canvas,
+// in fullscreen and with the code panel hidden; dragged positions stay.
+var hist = { stack: [], i: -1, timer: 0, applying: false };
+const undoBtn = document.getElementById("undo"), redoBtn = document.getElementById("redo");
+function syncUndoUI() {
+  const pending = hist.i >= 0 && editor.value !== hist.stack[hist.i];
+  undoBtn.disabled = !(hist.i > 0 || pending);
+  redoBtn.disabled = pending || hist.i >= hist.stack.length - 1;
+}
+// A new document starts a new history (same text again: keep it, e.g.
+// switching the render engine).
+function histReset(src) {
+  clearTimeout(hist.timer);
+  if (!(hist.i >= 0 && src === hist.stack[hist.i])) {
+    hist.stack = [src];
+    hist.i = 0;
+  }
+  syncUndoUI();
+}
+function histRecord() {
+  clearTimeout(hist.timer);
+  const s = editor.value;
+  if (hist.i < 0) { hist.stack = [s]; hist.i = 0; }
+  else if (s !== hist.stack[hist.i]) {
+    hist.stack.splice(hist.i + 1);
+    hist.stack.push(s);
+    if (hist.stack.length > 300) hist.stack.shift();
+    hist.i = hist.stack.length - 1;
+  }
+  syncUndoUI();
+}
+function histSoon() {
+  clearTimeout(hist.timer);
+  hist.timer = setTimeout(histRecord, 500);
+  syncUndoUI();
+}
+function histGo(d) {
+  if (renaming) cancelRename();
+  histRecord();
+  const j = hist.i + d;
+  if (j < 0 || j >= hist.stack.length) return;
+  hist.i = j;
+  hist.applying = true;
+  editor.value = hist.stack[j];
+  // The usual input path: highlight, file dirty state, live-view sync.
+  editor.dispatchEvent(new Event("input"));
+  hist.applying = false;
+  clearTimeout(deb);
+  rebuild(editor.value);
+  syncUndoUI();
+}
+undoBtn.addEventListener("click", () => histGo(-1));
+new ResizeObserver(([e]) => view.style.setProperty("--zb", e.borderBoxSize[0].inlineSize + "px"))
+  .observe(document.getElementById("zoombar"));
+redoBtn.addEventListener("click", () => histGo(1));
+// Capture phase: before the textarea's own undo, which only knows its
+// own typing (and is gone once the code panel is hidden).
+document.addEventListener("keydown", (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+  if (e.target === renameInput) return; // the label box keeps its native undo
+  const k = e.key.toLowerCase();
+  if (k === "z" || (k === "y" && !e.metaKey)) {
+    e.preventDefault();
+    histGo(k === "y" || e.shiftKey ? 1 : -1);
+  }
+}, true);
+
+// ── "Draw with an AI agent" (MCP) dialog ──
+const aiDialog = document.getElementById("ai-dialog");
+document.getElementById("ai-btn").addEventListener("click", () => {
+  // In the live view (served by flowmaid-mcp) say which document this is.
+  const live = aiDialog.querySelector(".ai-live");
+  live.hidden = !document.body.classList.contains("live");
+  if (!live.hidden) live.textContent = `Connected: this page is the live view of the agent's diagram "${document.body.dataset.liveDoc}". Edits here go to the agent, and its edits appear here.`;
+  aiDialog.showModal();
+});
+// Click on the backdrop closes it.
+aiDialog.addEventListener("click", (e) => { if (e.target === aiDialog) aiDialog.close(); });
+for (const b of aiDialog.querySelectorAll("[data-copy]")) {
+  b.addEventListener("click", async () => {
+    const text = b.previousElementSibling.textContent;
+    try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; }
+    catch { const r = document.createRange(); r.selectNodeContents(b.previousElementSibling); getSelection().removeAllRanges(); getSelection().addRange(r); b.textContent = "Selected"; }
+    setTimeout(() => { b.textContent = "Copy"; }, 1500);
+  });
+}
+
 // ── Wiring ──
 let deb;
 editor.addEventListener("input", () => {
+  if (!hist.applying) histSoon();
   scheduleHighlight();
   const f = files[current];
   if (f) {
@@ -2353,6 +2509,7 @@ editor.addEventListener("input", () => {
 // Load a source as a fresh document: new layout, no carried-over drags.
 async function openSource(src) {
   editor.value = src;
+  histReset(src);
   editor.scrollTop = 0;
   syncHighlight();
   good = null;

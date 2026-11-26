@@ -16,24 +16,56 @@ style.textContent = `
   #live-badge {
     position: absolute; z-index: 5; top: 14px; right: 14px; display: flex; align-items: center; gap: 7px;
     padding: 6px 10px; border: 1px solid var(--line2); background: var(--bg); color: var(--dim);
-    font: 500 10.5px var(--mono); letter-spacing: .07em; text-transform: uppercase; pointer-events: none;
+    font: 500 10.5px var(--mono); letter-spacing: .07em; text-transform: uppercase;
   }
+  #live-badge select {
+    font: inherit; letter-spacing: inherit; text-transform: none; color: var(--ink); background: transparent;
+    border: 0; border-left: 1px solid var(--line2); padding: 0 0 0 7px; cursor: pointer; max-width: 160px;
+  }
+  #live-badge select:focus-visible { outline: 1px solid var(--accent); }
   #live-badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
   #live-badge.on::before { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); }
   #live-badge.flash { color: var(--accent); }
 `;
 document.head.append(style);
+// "● LIVE  [doc ▾]": status text plus a switcher over the session's docs.
 const badge = document.createElement("div");
 badge.id = "live-badge";
-badge.textContent = `Live · ${doc}`;
 badge.title = "Synced with the flowmaid MCP server: agent edits appear here, your edits go back.";
+const status = document.createElement("span");
+status.textContent = "Live";
+const picker = document.createElement("select");
+picker.setAttribute("aria-label", "Agent diagram");
+picker.append(new Option(doc, doc, true, true));
+badge.append(status, picker);
 document.getElementById("view").append(badge);
+document.body.classList.add("live");
+document.body.dataset.liveDoc = doc;
+picker.addEventListener("pointerdown", (e) => e.stopPropagation());
+picker.addEventListener("change", () => {
+  const u = new URL(location.href);
+  u.searchParams.set("doc", picker.value);
+  location.href = u.href;
+});
+// Keep the list current (the agent may create documents any time).
+async function refreshDocs() {
+  try {
+    const list = await (await fetch(`/__docs?${q}`)).json();
+    const names = list.map((d) => d.doc);
+    if (!names.includes(doc)) names.unshift(doc);
+    if (names.join("\n") === [...picker.options].map((o) => o.value).join("\n")) return;
+    picker.replaceChildren(...names.map((n) => new Option(n, n, n === doc, n === doc)));
+  } catch { /* offline: keep what we have */ }
+}
+picker.addEventListener("focus", refreshDocs);
+// Other documents send no events to this page: look now and then.
+setInterval(() => { if (!document.hidden) refreshDocs(); }, 3000);
 let flashTimer = 0;
 function flash(text) {
-  badge.textContent = text;
+  status.textContent = text;
   badge.classList.add("flash");
   clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => { badge.classList.remove("flash"); badge.textContent = `Live · ${doc}`; }, 1400);
+  flashTimer = setTimeout(() => { badge.classList.remove("flash"); status.textContent = "Live"; }, 1400);
 }
 
 // ── Wait for the playground to be up ──
@@ -71,11 +103,12 @@ es.addEventListener("open", () => badge.classList.add("on"));
 es.addEventListener("error", () => {
   badge.classList.remove("on");
   // A restarted server has a new session token: this page can't rejoin.
-  badge.textContent = es.readyState === EventSource.CLOSED ? "Disconnected — reopen from the agent" : "Reconnecting…";
+  status.textContent = es.readyState === EventSource.CLOSED ? "Disconnected — reopen from the agent" : "Reconnecting…";
 });
 es.addEventListener("source", (e) => {
   const m = JSON.parse(e.data);
   badge.classList.add("on");
+  refreshDocs();
   const mine = m.origin === `browser:${client}`;
   // Typing not yet sent is about to be replaced: say so.
   const lost = !mine && !first && serverSrc !== null && editor.value !== serverSrc && editor.value !== m.source;

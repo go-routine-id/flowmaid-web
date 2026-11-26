@@ -68,6 +68,26 @@ await page.click("#editor"); await page.keyboard.press("Control+End"); await pag
 await until(async () => (await call("get_diagram")).source.includes("C --> A"), "typing reaches agent");
 if (shots) await page.screenshot({ path: shots + "/live-3-user.png" });
 
+// undo in the live view goes back to the agent too
+const beforeUndo = (await call("get_diagram")).source;
+await page.click("#undo");
+await until(async () => (await call("get_diagram")).source !== beforeUndo, "undo reaches agent");
+assert.ok(!(await call("get_diagram")).source.includes("C --> A"), "undo removed the typed edge");
+await page.click("#redo");
+await until(async () => (await call("get_diagram")).source.includes("C --> A"), "redo reaches agent");
+
+// documents the agent creates show up in the switcher, and switching works
+await call("set_diagram", { doc: "second", source: "flowchart LR\n    P[Second doc] --> Q" });
+await until(async () => (await page.$$eval("#live-badge option", (os) => os.map((o) => o.value))).includes("second"), "doc listed");
+await Promise.all([page.waitForNavigation(), page.selectOption("#live-badge select", "second")]);
+await until(async () => (await src()).includes("P[Second doc]"), "switched doc loaded");
+
+// the AI dialog knows it is the live view
+await page.click("#ai-btn");
+assert.match(await page.$eval("#ai-dialog .ai-live", (p) => (p.hidden ? "" : p.textContent)), /"second"/);
+if (shots) await page.screenshot({ path: shots + "/live-4-ai.png" });
+await page.keyboard.press("Escape");
+
 assert.deepEqual(errs, []);
 await browser.close();
 await client.close();
