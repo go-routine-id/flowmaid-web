@@ -770,6 +770,14 @@ import init, {
 } from "./pkg/flowmaid_web.js";
 import * as fe from "./flowedit.js";
 
+// The engine (wasm) loads at the end of this script. Anything that can
+// happen sooner (a dropped file, a remembered folder read from
+// IndexedDB, typing) must not reach it before then: rebuild() waits for
+// it, and openSource() calls made meanwhile run once it is in.
+let engineLoaded = false, openedEarly = 0;
+let markEngineLoaded;
+const engineReady = new Promise((r) => (markEngineLoaded = r));
+
 const EXAMPLES = {
   flow: `flowchart TD
     A([Start]) --> B[Read input]
@@ -1133,6 +1141,7 @@ function isSwimlaneText(src) {
 // Returns a promise only for the async mermaid path; callers that fit
 // the view afterwards await it either way.
 function rebuild(src) {
+  if (!engineLoaded) return; // the first render comes once it is in
   const r = rebuildInner(src);
   syncEditUI();
   return r;
@@ -2828,6 +2837,7 @@ editor.addEventListener("input", () => {
 
 // Load a source as a fresh document: new layout, no carried-over drags.
 async function openSource(src, shared = false) {
+  if (!engineLoaded) { openedEarly++; await engineReady; }
   if (!shared) dropShareHash();
   editor.value = src;
   histReset(src);
@@ -3102,6 +3112,7 @@ xddBtn.addEventListener("keydown", (e) => {
 function setEngine(next) {
   engine = next;
   try { localStorage.setItem("engine", engine); } catch {}
+  if (!engineLoaded) return; // the start-up applies it
   applyEngineUI();
   showVersion();
   openSource(editor.value);
@@ -3308,18 +3319,21 @@ reopenBtn.addEventListener("click", async () => {
   }
 });
 
-// On load, offer the remembered folder; open it straight away when the
-// browser still has permission (e.g. Chrome's "allow on every visit").
-if (window.showDirectoryPicker) lastDir.get().then(async (dir) => {
-  if (!dir) return;
+// The remembered folder, read while the engine loads: { dir, list }
+// when the browser still lets us in (e.g. Chrome's "allow on every
+// visit"), else null (the Reopen button offers it). The start-up below
+// decides whether to show it.
+const restoring = (async () => {
+  if (!window.showDirectoryPicker) return null;
+  const dir = await lastDir.get();
+  if (!dir) return null;
   remembered = dir;
   try {
-    if (!files.length && (await dir.queryPermission({ mode: "read" })) === "granted") {
-      await setFiles(await walkDir(dir), dir.name, dir);
-    }
-  } catch {} // folder moved or deleted — the Reopen button reports it
-  syncReopen();
-});
+    if ((await dir.queryPermission({ mode: "read" })) !== "granted") return null;
+    const list = await walkDir(dir);
+    return list.some((f) => DIAGRAM_EXT.test(f.name)) ? { dir, list } : null;
+  } catch { return null; } // moved or deleted: the Reopen button reports it
+})();
 
 async function saveCurrent() {
   const f = files[current];
@@ -3454,10 +3468,21 @@ document.addEventListener("keydown", (e) => {
 // The wasm by its versioned URL too (import.meta.resolve reads the
 // import map; without it, the plain URL).
 await init(import.meta.resolve ? { module_or_path: import.meta.resolve("./pkg/flowmaid_web_bg.wasm") } : undefined);
+engineLoaded = true;
+markEngineLoaded();
 applyEngineUI();
 showVersion();
-// A share link, else the draft from last time, else the first example.
-if (LIVE || !(await openShared())) {
+// What to show first: a share link, else the folder from last time,
+// else the draft, else the first example. Something opened while the
+// engine loaded (a dropped file, an example picked) wins over all.
+const restored = LIVE ? null : await restoring.catch(() => null);
+if (openedEarly || files.length) {
+  // already showing what the user chose
+} else if (!LIVE && (await openShared())) {
+  // the shared diagram
+} else if (restored) {
+  await setFiles(restored.list, restored.dir.name, restored.dir);
+} else {
   const draft = LIVE ? null : loadDraft();
   if (draft && draft !== EXAMPLES.flow) {
     notAnExample();
@@ -3466,6 +3491,7 @@ if (LIVE || !(await openShared())) {
     openSource(EXAMPLES.flow);
   }
 }
+syncReopen();
 
 // Hook for pages that drive the playground (the flowmaid MCP live view):
 // open() loads a document with a fresh layout; replace() swaps the text
