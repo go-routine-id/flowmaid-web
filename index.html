@@ -334,7 +334,7 @@
      diagram: it moves to the bar's tooltip instead. */
   #view { container-type: inline-size; }
   @container (max-width: 860px) { #edit-hint { display: none; } }
-  @media (max-width: 700px) {
+  @media (max-width: 700px), (orientation: landscape) and (max-height: 500px) {
     /* Edit bar bottom-left, zoom bar bottom-right, one row. */
     #edit-bar { left: 8px; bottom: 8px; max-width: calc(100% - var(--zb, 150px) - 22px); padding: 3px; gap: 4px; }
     #edit-bar button { height: 34px; padding: 0 9px; font-size: 10px; }
@@ -345,8 +345,8 @@
     #zoombar button { width: 34px; height: 40px; }
     #zoombar #zoom-fit { padding: 0 9px; }
   }
-  /* Tiny screens: undo/redo stay; zoom in/out go (pinch does that). */
-  @media (max-width: 400px) { #zoombar .pct, #zoom-in, #zoom-out { display: none; } }
+  /* A narrow canvas: undo/redo stay; zoom in/out go (pinch does that). */
+  @container (max-width: 440px) { #zoombar .pct, #zoom-in, #zoom-out { display: none; } }
   /* Fingers: bigger targets on the canvas toolbars. */
   @media (pointer: coarse) {
     .tools button { width: 40px; height: 38px; }
@@ -511,9 +511,9 @@
     .collapse-handle { top: 0; margin-top: -24px; }
     body.editor-hidden .collapse-handle { left: 12px; margin-top: -60px; }
   }
-  @media (max-width: 720px) {
+  @media (max-width: 720px), (orientation: landscape) and (max-height: 500px) {
     /* One header row: the logo, then every control in a strip that
-       scrolls sideways, most-used first. */
+       scrolls sideways, most-used first. (Phones on their side too.) */
     /* z-index: the dropdown sheets must sit over the canvas's floating bars. */
     header { flex-wrap: nowrap; gap: 10px; padding: 0 0 0 12px; min-height: 48px; position: relative; z-index: 30; }
     header h1 { font-size: 19px; flex: none; margin: 0; }
@@ -551,6 +551,31 @@
     }
     footer::-webkit-scrollbar { display: none; }
     footer a { padding: 4px 6px; }
+  }
+  /* Short phones upright (iPhone SE and the like): a bit less code,
+     more canvas. The divider still drags. */
+  @media (max-width: 860px) and (max-height: 700px) and (orientation: portrait) {
+    #editor-wrap { height: 28vh; height: 28dvh; }
+  }
+  /* Phones on their side: wide but short. The code sits beside the
+     canvas again (below it would leave the canvas a strip), the footer
+     and an empty files panel go, so the canvas keeps the height. */
+  @media (orientation: landscape) and (max-height: 500px) {
+    main { flex-direction: row; }
+    body:not(.has-files):not(.has-remembered) #files { display: none; }
+    #files { order: 0; width: 170px; max-height: none; border-right: 1px solid var(--line2); border-bottom: 0; }
+    #editor-wrap {
+      order: 0; width: 40%; min-width: 0; height: auto; flex: none; resize: none;
+      border-top: 0; border-right: 1px solid var(--line2);
+    }
+    #editor, #hl { padding: 10px 12px; font-size: 12px; }
+    .seam-anchor { order: 0; height: auto; align-self: auto; }
+    .collapse-handle, body.editor-hidden .collapse-handle { top: 50%; margin-top: -24px; }
+    #view { order: 0; padding: 10px; }
+    footer { display: none; }
+    /* Menus: a compact panel at the bottom right, not a full-width sheet. */
+    .dd-menu, .dd-menu.flip { left: auto; width: min(340px, calc(100% - 16px)); max-height: calc(100vh - 64px); max-height: calc(100dvh - 64px); }
+    .dd-menu li { padding: 10px 16px; }
   }
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; animation: none !important; }
@@ -948,7 +973,7 @@ function fitView(zCap = 1.5, readable = false) {
   // A diagram that would need to shrink a lot opens at a readable zoom
   // instead; one that only just doesn't fit is shown whole (a node half
   // under the bars looks broken).
-  if (readable && cam.z < Z_READABLE * 0.75) {
+  if (readable && cam.z < Z_READABLE * 0.7) {
     cam.z = Z_READABLE;
     cam.x = Math.max(28, (vr.width - w * cam.z) / 2);
     cam.y = top;
