@@ -1,6 +1,6 @@
 // Two-way sync through a real browser (Playwright, optional): agent edits
 // show up on the canvas, canvas and code edits come back to the agent,
-// and dragged positions survive an agent edit. Run: node test/live-browser.mjs
+// and dragged positions (saved in the source) survive an agent edit. Run: node test/live-browser.mjs
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -45,14 +45,19 @@ if (shots) await page.screenshot({ path: shots + "/live-2-agent.png" });
 const c0 = await node("Handle");
 await page.mouse.move(c0.x, c0.y); await page.mouse.down(); await page.mouse.move(c0.x - 160, c0.y + 40, { steps: 8 }); await page.mouse.up();
 const moved = await node("Handle");
+// the layout is saved in the source (a `%% flowmaid:pos` comment), so the agent has it
+await until(async () => /%% flowmaid:pos .*\bC=/.test((await call("get_diagram")).source), "layout reaches agent");
 await call("edit_diagram", { ops: [{ op: "rename_node", id: "A", label: "Incoming request" }] });
 await until(async () => (await node("Incoming request")) !== null, "rename arrives");
 await page.waitForTimeout(300);
 const after = await node("Handle");
 assert.ok(Math.abs(after.x - moved.x) < 3 && Math.abs(after.y - moved.y) < 3, `drag kept: ${JSON.stringify([moved, after])}`);
+assert.match((await call("get_diagram")).source, /%% flowmaid:pos .*\bC=/, "agent edit keeps the layout");
 
-// what the user selects on the canvas reaches the agent
-assert.equal((await call("get_selection")).selected, null);
+// what the user selects on the canvas reaches the agent (pressing a
+// node to drag it selected it: clear that first)
+await page.keyboard.press("Escape");
+await until(async () => (await call("get_selection")).selected === null, "no selection");
 const hs = await node("Handle");
 await page.mouse.click(hs.x, hs.y);
 let sel;

@@ -144,4 +144,24 @@ assert.deepEqual(fe.NODE_SHAPES, fe.nodeShapes(), "NODE_SHAPES matches the Rust 
 // …and keeps A, which only appeared in the two dropped lines.
 assert.equal(fe.deleteNode("flowchart TD\n    A --> B\n    A --> B", "B"), "flowchart TD\n    A");
 assert.equal(fe.deleteNode("flowchart TD\n    A --> C\n    A --> B\n    C --> B", "B"), "flowchart TD\n    A --> C\n");
+// Saved layout: a comment line the engine ignores, round-tripped.
+{
+  const S = "flowchart TD\n    A[Start] --> B{OK?}\n    style B fill:#fff\n";
+  const L = fe.writePositions(S, new Map([["A", [10, 20.04]], ["B", [-5.5, 300]]]));
+  assert.equal(L, "flowchart TD\n    A[Start] --> B{OK?}\n    style B fill:#fff\n    %% flowmaid:pos A=10,20 B=-5.5,300\n");
+  m.render_svg(L);
+  assert.equal(m.node_keys(L), m.node_keys(S));
+  assert.deepEqual([...fe.readPositions(L)], [["A", [10, 20]], ["B", [-5.5, 300]]]);
+  assert.equal(fe.writePositions(L, []), S);
+  // New nodes go above it; a deleted node leaves it.
+  assert.match(fe.addNode(L, "C", "New"), /C\[New\]\n    %% flowmaid:pos/);
+  assert.equal(fe.deleteNode(L, "B"), "flowchart TD\n    A[Start]\n    %% flowmaid:pos A=10,20\n");
+  // Copy / paste: taken ids are renamed, edges and styles follow.
+  const clip = fe.extractNodes(L, ["A", "B"]);
+  assert.equal(clip, "A[Start]\nB{OK?}\nA --> B\nstyle B fill:#fff");
+  const { src, map } = fe.pasteNodes(L, clip);
+  assert.deepEqual([...map], [["A", "N1"], ["B", "N2"]]);
+  assert.deepEqual(m.node_keys(src).split("\n").filter(Boolean), ["A", "B", "N1", "N2"]);
+  assert.match(src, /N1\[Start\]\n    N2\{OK\?\}\n    N1 --> N2\n    style N2 fill:#fff\n    %% flowmaid:pos/);
+}
 console.log("ALL OK");

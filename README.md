@@ -20,15 +20,19 @@ document.body.innerHTML = render_svg("flowchart TD\nA([Start]) --> B{OK?}");
 
 Flowcharts can be edited straight on the canvas; every action is written back into the Mermaid source.
 
-- **Hover a node** (tap it on a touch screen) for a toolbar: **+** adds the next node along the flow, already connected, in the nearest free spot (drag **+** onto another node to connect them instead), **✎** edits the label, **◩** changes its shape (rectangle, rounded, stadium, subroutine, database, circle, double circle, decision, hexagon, input/output), **🎨** sets its colour (a `style` line), **🗑** deletes it with its edges.
+- **Hover a node** (tap it on a touch screen) for a toolbar: **+** adds the next node along the flow, already connected, in the nearest free spot (drag **+** onto another node to connect them instead), **✎** edits the label, **◩** changes its shape (rectangle, rounded, stadium, subroutine, database, circle, double circle, decision, hexagon, input/output), **🎨** sets its colour (a `style` line), **⧉** duplicates it, **🗑** deletes it with its edges.
 - **Click an edge** (or its label) for its toolbar: edit the label, switch solid / dotted / thick, reverse it, delete it. Double-click an edge to edit its label.
 - **Keyboard**, with a node selected: `Tab` adds a child, `Enter` a sibling, `F2` renames, arrow keys move between nodes, `Delete` removes, `Esc` clears the selection.
 - **Several nodes**: Shift+click or Ctrl/⌘+click to select more, then **Group** (or Ctrl/⌘+G) wraps them in a `subgraph` and asks for its title; **Ungroup**, shape, colour and delete work on the whole selection.
 - Double-click empty canvas for a new node; drag the ● handle of a selected node (or Shift+drag a node) to connect.
+- **Copy / paste**: Ctrl/⌘+C, X, V copy, cut and paste the selected nodes as Mermaid text (with the edges among them, their styles and positions); taken ids are renamed, so they paste into this diagram, another one or another tab. Ctrl/⌘+D duplicates.
+- **Saved layout**: dragged positions are written into the source as a comment line, `%% flowmaid:pos A=120,40 B=120,160 …`, which Mermaid ignores; they survive reloads, files, share links and MCP agents (whose `render_diagram` uses them). **Auto layout** removes the line.
 
 The ⛶ button on the zoom bar (or Shift+F) shows the canvas alone, fullscreen where the browser allows it; Esc leaves.
 
-**Undo / redo**: ↶ ↷ on the zoom bar or Ctrl/⌘+Z, Ctrl/⌘+Shift+Z — one history for typing, canvas edits and an agent's live-view edits.
+**Undo / redo**: ↶ ↷ on the zoom bar or Ctrl/⌘+Z, Ctrl/⌘+Shift+Z — one history for typing, canvas edits (moves included) and an agent's live-view edits.
+
+**Autosave and share links**: the diagram you work on without a file open is kept in the browser (localStorage) and comes back on reload. *Copy share link* (Download menu) puts the whole source, deflated, in the URL hash (`#z=…`): nothing is uploaded.
 
 The full walkthrough with every shortcut is the [editor guide](https://opensource.go-routine.com/flowmaid-web/guide.html) (`guide.html`).
 

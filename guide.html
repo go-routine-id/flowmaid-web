@@ -72,9 +72,9 @@
 
   <h3>Nodes</h3>
   <ul>
-    <li><b>Hover a node</b> (tap it on a touch screen) for its toolbar: <b>+</b> adds the next node along the flow, connected, in the nearest free spot (drag <b>+</b> onto another node to connect the two instead); <b>✎</b> edits the label; <b>◩</b> changes the shape; <b>🎨</b> sets a colour; <b>🗑</b> deletes the node with its edges.</li>
+    <li><b>Hover a node</b> (tap it on a touch screen) for its toolbar: <b>+</b> adds the next node along the flow, connected, in the nearest free spot (drag <b>+</b> onto another node to connect the two instead); <b>✎</b> edits the label; <b>◩</b> changes the shape; <b>🎨</b> sets a colour; <b>⧉</b> duplicates it; <b>🗑</b> deletes the node with its edges.</li>
     <li><b>Double-click</b> a node to edit its label in place, or empty canvas to add a node there.</li>
-    <li><b>Drag</b> a node to move it. Positions you set survive edits to the code.</li>
+    <li><b>Drag</b> a node to move it. The layout is saved in the code as a comment line, <code>%% flowmaid:pos A=120,40 B=120,160 …</code> (other Mermaid tools ignore it), so it survives reloads, saved files, share links and AI agents. <b>Auto layout</b> removes it.</li>
     <li>Shapes: rectangle, rounded, stadium, subroutine, database, circle, double circle, decision, hexagon and both input/output parallelograms.</li>
   </ul>
 
@@ -87,7 +87,14 @@
   <h3>Several nodes and groups</h3>
   <ul>
     <li><kbd>Shift</kbd>-click or <kbd>Ctrl</kbd>/<kbd>⌘</kbd>-click adds nodes to the selection.</li>
-    <li>The selection toolbar groups them into a <code>subgraph</code> (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>G</kbd>, then type its title), ungroups them, and sets shape, colour or deletes for all of them.</li>
+    <li>The selection toolbar groups them into a <code>subgraph</code> (<kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>G</kbd>, then type its title), ungroups them, and sets shape, colour, duplicates or deletes for all of them.</li>
+  </ul>
+
+  <h3>Copy, paste &amp; duplicate</h3>
+  <ul>
+    <li><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>C</kbd> copies the selected nodes as Mermaid text: their definitions, the edges among them, their <code>style</code> lines and their positions. <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>X</kbd> cuts.</li>
+    <li><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd> pastes them as new nodes in the same arrangement, in the first free spot beside the originals (or in the middle of the view when they are off screen). Ids already in use get new ones, so it works in the same diagram, another diagram or another tab, and Mermaid lines copied from a text editor paste the same way. A line of plain text becomes a node with that label.</li>
+    <li><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>D</kbd> or <b>⧉</b> duplicates the selection in one step.</li>
   </ul>
 
   <h2 id="keys">Keyboard</h2>
@@ -102,6 +109,8 @@
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd></td><td>Undo</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Y</kbd></td><td>Redo</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>G</kbd></td><td>Group the selection</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>C</kbd> / <kbd>X</kbd> / <kbd>V</kbd></td><td>Copy / cut / paste nodes</td></tr>
+    <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>D</kbd></td><td>Duplicate the selection</td></tr>
     <tr><td><kbd>N</kbd></td><td>New node</td></tr>
     <tr><td><kbd>V</kbd></td><td>Edit mode on / off</td></tr>
     <tr><td><kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd></td><td>Fit the diagram / fullscreen</td></tr>
@@ -110,14 +119,16 @@
   </table>
 
   <h2 id="undo">Undo &amp; redo</h2>
-  <p>The <b>↶ ↷</b> buttons on the zoom bar and <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd> undo one history of the diagram's code, whatever changed it: typing (grouped by pauses), each canvas action, and an AI agent's edits in the live view. It works from the canvas, in fullscreen and with the code panel hidden, and nodes you dragged stay where you put them.</p>
+  <p>The <b>↶ ↷</b> buttons on the zoom bar and <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd> undo one history of the diagram's code, whatever changed it: typing (grouped by pauses), each canvas action, and an AI agent's edits in the live view. It works from the canvas, in fullscreen and with the code panel hidden; moving nodes and Auto layout are steps too, since the layout lives in the code.</p>
 
   <h2 id="view">View, files &amp; export</h2>
   <ul>
     <li><b>Pan</b> by dragging empty canvas; <b>zoom</b> with <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+scroll, pinch, or the zoom bar. <b>Fit</b> frames the whole diagram.</li>
     <li><b>⛶</b> (<kbd>Shift</kbd>+<kbd>F</kbd>) shows the canvas alone, fullscreen where the browser allows it.</li>
     <li><b>Open</b> a folder or <code>.mmd</code> files (or drop them on the page); <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>S</kbd> saves back.</li>
-    <li><b>Download SVG</b>, or from its menu PNG (2×), copy as image, copy SVG code.</li>
+    <li><b>Download SVG</b>, or from its menu PNG (2×), copy as image, copy SVG code, or <b>Copy share link</b>.</li>
+    <li><b>Autosave</b>: the diagram you work on without a file open is kept in this browser and comes back when you reopen the page. Picking an example only replaces it once you edit the example.</li>
+    <li><b>Share links</b> carry the whole diagram, layout included, compressed in the part of the URL after <code>#</code>, which browsers never send to a server: nothing is uploaded. Opening one leaves your own draft alone until you edit the shared diagram.</li>
     <li>On a phone the controls sit in one scrolling strip at the top, menus open from the bottom, and edit and zoom share the bottom row.</li>
   </ul>
 

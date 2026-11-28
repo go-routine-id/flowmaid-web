@@ -336,7 +336,7 @@ source = "git+https://github.com/go-routine-id/flowmaid?tag=v0.40.2#c202cfcc197f
 
 [[package]]
 name = "flowmaid-mcp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "axum",
  "base64",

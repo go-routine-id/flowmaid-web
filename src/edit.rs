@@ -761,12 +761,22 @@ fn append_lines(src: &str, doc: &Doc, stmts: &[String]) -> String {
     let indent = stmt_indent(doc);
     let body = src.trim_end();
     let trail = &src[body.len()..];
-    let mut out = body.to_string();
+    // New lines go above a saved layout at the end, which stays last.
+    let mut cut = body.len();
+    while let Some(k) = body[..cut].rfind('\n') {
+        let line = &body[k + 1..cut];
+        if !(is_pos_line(line) || line.trim().is_empty()) {
+            break;
+        }
+        cut = k;
+    }
+    let mut out = body[..cut].to_string();
     for s in stmts {
         out.push('\n');
         out.push_str(&indent);
         out.push_str(s);
     }
+    out.push_str(&body[cut..]);
     if let Some(k) = trail.find('\n') {
         out.push_str(&trail[k..]);
     }
@@ -992,8 +1002,23 @@ fn names_node(l: &str, kw: &str, id: &str) -> bool {
     gap > 0 && after[gap..].starts_with(id) && !char_at(after, gap + id.len()).is_some_and(is_id_char)
 }
 
-/// Delete a node, every edge touching it, and its style/class/click lines.
+/// Delete a node, every edge touching it, its style/class/click lines
+/// and its saved position.
 pub fn delete_node(src: &str, id: &str) -> String {
+    let out = delete_node_lines(src, id);
+    // Its saved position goes too.
+    if !out.contains(POS_TAG) {
+        return out;
+    }
+    let pos = read_positions(&out);
+    if !pos.iter().any(|(p, _, _)| p == id) {
+        return out;
+    }
+    let kept: Vec<_> = pos.into_iter().filter(|(p, _, _)| p != id).collect();
+    write_positions(&out, &kept)
+}
+
+fn delete_node_lines(src: &str, id: &str) -> String {
     let doc = parse_flow(src);
     let mut changes = HashMap::new();
     // Every statement that names the node gets rewritten together.
@@ -1781,6 +1806,190 @@ pub fn set_node_shape(src: &str, ids: &[String], key: &str) -> String {
     src
 }
 
+// ── Saved layout: `%% flowmaid:pos` comment lines ──
+//
+// Node positions dragged on the canvas live in the source as comments,
+// `%% flowmaid:pos A=120,40 B=-30.5,200`, so they travel with the file,
+// a share link and an agent. Mermaid (and the engine) ignore comments.
+
+const POS_TAG: &str = "%% flowmaid:pos";
+
+fn is_pos_line(l: &str) -> bool {
+    l.trim_start().starts_with(POS_TAG)
+}
+
+/// Saved node positions, (id, x, y); a later entry for an id wins.
+pub fn read_positions(src: &str) -> Vec<(String, f64, f64)> {
+    let mut out: Vec<(String, f64, f64)> = Vec::new();
+    for l in src.split('\n').filter(|l| is_pos_line(l)) {
+        for tok in l.trim_start()[POS_TAG.len()..].split_whitespace() {
+            let Some((id, xy)) = tok.rsplit_once('=') else { continue };
+            let Some((x, y)) = xy.split_once(',') else { continue };
+            let (Ok(x), Ok(y)) = (x.parse::<f64>(), y.parse::<f64>()) else { continue };
+            if id.is_empty() || !x.is_finite() || !y.is_finite() {
+                continue;
+            }
+            match out.iter_mut().find(|(k, _, _)| k == id) {
+                Some(e) => (e.1, e.2) = (x, y),
+                None => out.push((id.to_string(), x, y)),
+            }
+        }
+    }
+    out
+}
+
+fn fmt_num(v: f64) -> String {
+    let r = (v * 10.0).round() / 10.0;
+    if r == r.trunc() { format!("{}", r as i64) } else { format!("{r:.1}") }
+}
+
+/// Replace the saved positions with `pos` (ids with whitespace or `=`
+/// can't be written and are skipped). The lines go where the first one
+/// was, else at the end; an empty `pos` removes them.
+pub fn write_positions(src: &str, pos: &[(String, f64, f64)]) -> String {
+    let entries: Vec<String> = pos
+        .iter()
+        .filter(|(id, x, y)| !id.is_empty() && !id.contains(|c: char| c.is_whitespace() || c == '=') && x.is_finite() && y.is_finite())
+        .map(|(id, x, y)| format!("{id}={},{}", fmt_num(*x), fmt_num(*y)))
+        .collect();
+    let lines: Vec<&str> = src.split('\n').collect();
+    let first = lines.iter().position(|l| is_pos_line(l));
+    let indent = match first {
+        Some(i) => leading_ws(lines[i]).to_string(),
+        None => lines.iter().skip(1).rev().find(|l| !l.trim().is_empty()).map_or(String::new(), |l| leading_ws(l).to_string()),
+    };
+    // Eight per line keeps them readable in the code panel.
+    let block: Vec<String> = entries.chunks(8).map(|c| format!("{indent}{POS_TAG} {}", c.join(" "))).collect();
+    let mut kept: Vec<String> = Vec::new();
+    let mut placed = false;
+    for (i, l) in lines.iter().enumerate() {
+        if is_pos_line(l) {
+            if Some(i) == first && !placed {
+                kept.extend(block.iter().cloned());
+                placed = true;
+            }
+            continue;
+        }
+        kept.push(l.to_string());
+    }
+    if placed || block.is_empty() {
+        return kept.join("\n");
+    }
+    let joined = kept.join("\n");
+    let body = joined.trim_end();
+    let tail = &joined[body.len()..];
+    let nl = if tail.contains('\n') { "\n" } else { "" };
+    format!("{body}\n{}{nl}", block.join("\n"))
+}
+
+// ── Copy / paste of nodes ──
+
+/// Mermaid lines for `ids`: each node's definition (shape, label,
+/// class), the edges among them and their `style` lines — what a copy
+/// puts on the clipboard.
+pub fn extract_nodes(src: &str, ids: &[String]) -> String {
+    let doc = parse_flow(src);
+    let mut out = Vec::new();
+    for id in ids {
+        let refs: Vec<&Ref> = doc.refs().filter(|r| &r.id == id).collect();
+        if let Some(r) = shape_ref_of(&refs) {
+            out.push(r.raw.clone());
+        }
+    }
+    for seg in doc.lines.iter().flat_map(|l| &l.segs) {
+        let st = &seg.stmt;
+        for k in 0..st.ops.len() {
+            for a in st.groups[k].iter().filter(|r| ids.contains(&r.id)) {
+                for b in st.groups[k + 1].iter().filter(|r| ids.contains(&r.id)) {
+                    out.push(format!("{} {} {}", a.id, st.ops[k].raw.trim(), b.id));
+                }
+            }
+        }
+    }
+    for l in src.split('\n') {
+        if ids.iter().any(|id| style_line(l, id).is_some()) {
+            out.push(l.trim().to_string());
+        }
+    }
+    out.join("\n")
+}
+
+/// Append a snippet of flowchart statements (and `style` lines),
+/// renaming every node whose id is already taken in `src` to a fresh
+/// N1, N2, … . Returns the new source and (snippet id, id in the result)
+/// for each node of the snippet, in order.
+pub fn paste_nodes(src: &str, snippet: &str) -> (String, Vec<(String, String)>) {
+    // The snippet's own header and saved positions don't belong in src.
+    let body: Vec<&str> = snippet
+        .split('\n')
+        .skip_while(|l| l.trim().is_empty() || l.trim().starts_with("%%"))
+        .enumerate()
+        .filter(|(i, l)| !(*i == 0 && is_flowchart(l)) && !is_pos_line(l) && !l.trim().is_empty())
+        .map(|(_, l)| l)
+        .collect();
+    if body.is_empty() {
+        return (src.to_string(), Vec::new());
+    }
+    let header = "flowchart TD\n";
+    let wrapped = format!("{header}{}", body.iter().map(|l| l.trim()).collect::<Vec<_>>().join("\n"));
+    let sdoc = parse_flow(&wrapped);
+    // The snippet's node ids, in order: statements first, then style lines.
+    let mut sids: Vec<String> = Vec::new();
+    for r in sdoc.refs() {
+        if !sids.contains(&r.id) {
+            sids.push(r.id.clone());
+        }
+    }
+    for l in wrapped.split('\n') {
+        if let Some(rest) = l.strip_prefix("style") {
+            let gap = ws_len(rest, 0);
+            let n = id_len(rest, gap);
+            if gap > 0 && n > 0 && !sids.iter().any(|x| x == &rest[gap..gap + n]) {
+                sids.push(rest[gap..gap + n].to_string());
+            }
+        }
+    }
+    let doc = parse_flow(src);
+    let (blocks, _) = subgraphs(src);
+    let existing: HashSet<String> = doc.refs().map(|r| r.id.clone()).chain(blocks.into_iter().map(|b| b.id)).collect();
+    let mut taken: Vec<String> = existing.iter().cloned().chain(sids.iter().cloned()).collect();
+    let mut map: Vec<(String, String)> = Vec::new();
+    for id in &sids {
+        let new = if existing.contains(id) || is_keyword(id) {
+            let f = fresh_id(src, &taken, "N");
+            taken.push(f.clone());
+            f
+        } else {
+            id.clone()
+        };
+        map.push((id.clone(), new));
+    }
+    let rename = |id: &str| map.iter().find(|(o, _)| o == id).map(|(_, n)| n.clone());
+    let mut edits = Vec::new();
+    for r in sdoc.refs() {
+        if let Some(n) = rename(&r.id).filter(|n| n != &r.id) {
+            edits.push((r.start, r.id_end, n));
+        }
+    }
+    let mut off = 0;
+    for l in wrapped.split('\n') {
+        if let Some(rest) = l.strip_prefix("style") {
+            let gap = ws_len(rest, 0);
+            let n = id_len(rest, gap);
+            if gap > 0 && n > 0 {
+                let at = off + 5 + gap;
+                if let Some(new) = rename(&rest[gap..gap + n]).filter(|x| x != &rest[gap..gap + n]) {
+                    edits.push((at, at + n, new));
+                }
+            }
+        }
+        off += l.len() + 1;
+    }
+    let renamed = splice(&wrapped, edits);
+    let stmts: Vec<String> = renamed[header.len()..].split('\n').map(String::from).collect();
+    (append_lines(src, &doc, &stmts), map)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1834,6 +2043,49 @@ mod tests {
         for (f, t, n, op) in e {
             assert_eq!(Some(op), edge_op(src, &f, &t, n));
         }
+    }
+
+
+    #[test]
+    fn new_lines_go_above_the_layout() {
+        let src = "flowchart TD\n    A --> B\n    %% flowmaid:pos A=1,2 B=3,4\n";
+        assert_eq!(add_node(src, "C", "New"), "flowchart TD\n    A --> B\n    C[New]\n    %% flowmaid:pos A=1,2 B=3,4\n");
+        let (out, _) = paste_nodes(src, "X --> Y");
+        assert_eq!(out, "flowchart TD\n    A --> B\n    X --> Y\n    %% flowmaid:pos A=1,2 B=3,4\n");
+        assert_eq!(delete_node(src, "B"), "flowchart TD\n    A\n    %% flowmaid:pos A=1,2\n");
+    }
+
+    #[test]
+    fn positions_round_trip() {
+        let src = "flowchart TD\n    A --> B\n";
+        let pos = vec![("A".to_string(), 120.0, 40.0), ("B".to_string(), -30.46, 200.04)];
+        let out = write_positions(src, &pos);
+        assert_eq!(out, "flowchart TD\n    A --> B\n    %% flowmaid:pos A=120,40 B=-30.5,200\n");
+        assert_eq!(read_positions(&out), vec![("A".into(), 120.0, 40.0), ("B".into(), -30.5, 200.0)]);
+        // Rewritten in place, edges and nodes untouched by it.
+        let out2 = write_positions(&format!("{out}    B --> C\n"), &[("C".into(), 1.0, 2.0)]);
+        assert_eq!(out2, "flowchart TD\n    A --> B\n    %% flowmaid:pos C=1,2\n    B --> C\n");
+        assert_eq!(edge_list(&out2).len(), 2);
+        assert_eq!(write_positions(&out2, &[]), "flowchart TD\n    A --> B\n    B --> C\n");
+        // Long layouts wrap, and every line is read.
+        let many: Vec<(String, f64, f64)> = (0..20).map(|i| (format!("n{i}"), i as f64, 0.0)).collect();
+        let w = write_positions("flowchart TD\n    n0", &many);
+        assert_eq!(w.matches("%% flowmaid:pos").count(), 3);
+        assert_eq!(read_positions(&w).len(), 20);
+    }
+
+    #[test]
+    fn copy_and_paste_nodes() {
+        let src = "flowchart TD\n    A[Start] -->|go| B{OK?}\n    B --> C\n    style B fill:#fff";
+        let clip = extract_nodes(src, &["A".into(), "B".into()]);
+        assert_eq!(clip, "A[Start]\nB{OK?}\nA -->|go| B\nstyle B fill:#fff");
+        let (out, map) = paste_nodes(src, &clip);
+        assert_eq!(map, vec![("A".into(), "N1".into()), ("B".into(), "N2".into())]);
+        assert!(out.ends_with("\n    N1[Start]\n    N2{OK?}\n    N1 -->|go| N2\n    style N2 fill:#fff"), "{out}");
+        // Ids that are free keep their names; a header and positions are dropped.
+        let (out, map) = paste_nodes(src, "flowchart LR\n%% flowmaid:pos X=1,2\nX[New] --> A");
+        assert_eq!(map, vec![("X".into(), "X".into()), ("A".into(), "N1".into())]);
+        assert!(out.ends_with("\n    X[New] --> N1"), "{out}");
     }
 
     #[test]

@@ -62,7 +62,7 @@ Shapes: `rect`, `rounded`, `stadium`, `subroutine`, `cylinder`, `circle`, `doubl
 - Port `7878` by default (the next free one if taken); `FLOWMAID_PORT` chooses another, `0` lets the system pick.
 - The URL carries a random session token; requests without it are refused, so other web pages cannot read or change your diagrams. A restarted server has a new token: reopen the view from the agent.
 - An edit made in the browser on top of an older copy (the agent changed it meanwhile) is refused rather than undoing the agent's edit, and the page says so.
-- Node positions you drag in the browser stay where they are when the agent edits.
+- Node positions you drag in the browser are saved in the source as a `%% flowmaid:pos id=x,y …` comment line: the agent sees them in `get_diagram`, `render_diagram` draws that layout, and agent edits keep it (a deleted node leaves it).
 - What you select on the canvas (click, Shift/Ctrl+click, an edge) is reported to the server, kept in memory only, so the agent can ask with `get_selection`. Clicks that don't change the selection, hovering and the pointer position are not sent.
 - The badge in the corner shows the connection and switches between the session's documents; undo / redo in the page reach the agent like any other edit.
 

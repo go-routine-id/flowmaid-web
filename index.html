@@ -92,7 +92,8 @@
   /* ── Header ── */
   header {
     display: flex; align-items: center; gap: 8px; padding: 0 18px; min-height: 56px;
-    border-bottom: 1px solid var(--line2); flex-wrap: wrap; z-index: 1;
+    /* Above the canvas's floating bars, so its menus open over them. */
+    border-bottom: 1px solid var(--line2); flex-wrap: wrap; position: relative; z-index: 10;
     background: var(--bg);
   }
   header h1 {
@@ -599,6 +600,7 @@
       <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6l4.5 4.5L12.5 6"/></svg>
     </button>
     <ul class="dd-menu" role="menu" aria-label="Export">
+      <li role="menuitem" data-act="share">Copy share link</li>
       <li role="menuitem" data-act="svg">Download SVG</li>
       <li role="menuitem" data-act="png">Download PNG (2×)</li>
       <li role="menuitem" data-act="copy-png">Copy as image (PNG)</li>
@@ -644,6 +646,7 @@
         <button data-act="rename" title="Edit label"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5l3 3L6 13H3v-3z"/><path d="M9 4l3 3"/></svg></button>
         <button data-act="shape" title="Shape"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="1.8" width="7.2" height="7.2" rx="1"/><circle cx="11" cy="11" r="3.6"/></svg></button>
         <button data-act="color" title="Colour"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2a6 6 0 1 0 0 12c1 0 1.4-.9.9-1.6-.5-.8 0-1.8 1-1.8H12a2 2 0 0 0 2-2A6.2 6.2 0 0 0 8 2z"/><circle cx="5" cy="7.2" r=".7" fill="currentColor"/><circle cx="8" cy="5" r=".7" fill="currentColor"/><circle cx="11" cy="7.2" r=".7" fill="currentColor"/></svg></button>
+        <button data-act="duplicate" title="Duplicate (Ctrl/⌘+D)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.2" y="5.2" width="8.3" height="8.3" rx="1.4"/><path d="M10.8 2.5H4A1.5 1.5 0 0 0 2.5 4v6.8"/></svg></button>
         <button data-act="delete" class="danger" title="Delete node and its edges"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M6.8 7v4M9.2 7v4"/></svg></button>
       </div>
       <div id="edge-tools" class="tools" role="toolbar" aria-label="Edge actions">
@@ -662,6 +665,7 @@
         <button data-act="ungroup" class="wide" title="Remove the group these nodes are in">Ungroup</button>
         <button data-act="shape" title="Shape"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="1.8" width="7.2" height="7.2" rx="1"/><circle cx="11" cy="11" r="3.6"/></svg></button>
         <button data-act="color" title="Colour"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2a6 6 0 1 0 0 12c1 0 1.4-.9.9-1.6-.5-.8 0-1.8 1-1.8H12a2 2 0 0 0 2-2A6.2 6.2 0 0 0 8 2z"/><circle cx="5" cy="7.2" r=".7" fill="currentColor"/><circle cx="8" cy="5" r=".7" fill="currentColor"/><circle cx="11" cy="7.2" r=".7" fill="currentColor"/></svg></button>
+        <button data-act="duplicate" title="Duplicate (Ctrl/⌘+D)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.2" y="5.2" width="8.3" height="8.3" rx="1.4"/><path d="M10.8 2.5H4A1.5 1.5 0 0 0 2.5 4v6.8"/></svg></button>
         <button data-act="delete" class="danger" title="Delete selected (Delete)"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M6.8 7v4M9.2 7v4"/></svg></button>
       </div>
       <div id="palette" role="menu" aria-label="Node colour"></div>
@@ -1139,7 +1143,10 @@ function rebuildInner(src) {
         savedPos.set(k, [good.pos[i * 2], good.pos[i * 2 + 1]])
       );
     }
-    const pos = keys.flatMap((k, i) => savedPos.get(k) ?? [auto[i * 2], auto[i * 2 + 1]]);
+    // Positions saved in the source (`%% flowmaid:pos`) first, then this
+    // session's drags, then the automatic layout.
+    const stored = src.includes("%% flowmaid:pos") ? fe.readPositions(src) : null;
+    const pos = keys.flatMap((k, i) => stored?.get(k) ?? savedPos.get(k) ?? [auto[i * 2], auto[i * 2 + 1]]);
     good = { src, keys, pos, sizes };
     errBox.style.display = "none";
     render();
@@ -1399,7 +1406,7 @@ for (const t of ["pointerup", "pointercancel"]) {
       select({ type: "node", id: narrowTo.id });
     }
     narrowTo = null;
-    if (drag?.moved) histRecord(true); // a move is an undo step
+    if (drag?.moved) savePositions(); // into the source, as an undo step
     drag = null;
     pan = null;
     view.style.cursor = "default";
@@ -1580,10 +1587,35 @@ function updateOverlay() {
 // and the diagram on screen agree (an open rename is committed first,
 // a pending re-render is flushed), so ids and edge counts the canvas
 // handed out still mean the same thing in the text. Returns success.
-function applySource(edit) {
+// Replace old with next in the code panel through the browser's editing
+// (only the part that differs), so the caret lands on the change.
+function typeInto(old, next) {
+  if (editor.value !== old || document.body.classList.contains("editor-hidden")) return false;
+  let a = 0;
+  while (a < old.length && a < next.length && old[a] === next[a]) a++;
+  let b = 0;
+  while (b < old.length - a && b < next.length - a && old[old.length - 1 - b] === next[next.length - 1 - b]) b++;
+  const ins = next.slice(a, next.length - b);
+  editor.focus({ preventScroll: true });
+  editor.setSelectionRange(a, old.length - b);
+  try { return document.execCommand(ins ? "insertText" : "delete", false, ins) && editor.value === next; } catch { return false; }
+}
+// Run fn, then put the code panel's caret and scroll back.
+function keepView(fn) {
+  const { scrollTop, selectionStart, selectionEnd } = editor;
+  const r = fn();
+  editor.setSelectionRange(selectionStart, selectionEnd);
+  editor.scrollTop = scrollTop;
+  return r;
+}
+// Only the saved layout differs.
+const layoutOnly = (a, b) => fe.writePositions(a, []) === fe.writePositions(b, []);
+
+function applySource(edit, prepare) {
   if (renaming) commitRename();
   // Typing not yet in the history becomes its own step first.
   histRecord();
+  prepare?.();
   if (!good || editor.value !== good.src) {
     clearTimeout(deb);
     rebuild(editor.value);
@@ -1594,19 +1626,21 @@ function applySource(edit) {
     return false;
   }
   const old = editor.value;
-  const next = edit(old);
-  if (next === old) return false;
-  let a = 0;
-  while (a < old.length && a < next.length && old[a] === next[a]) a++;
-  let b = 0;
-  while (b < old.length - a && b < next.length - a && old[old.length - 1 - b] === next[next.length - 1 - b]) b++;
-  const ins = next.slice(a, next.length - b);
-  let done = false;
-  if (!document.body.classList.contains("editor-hidden")) {
-    editor.focus({ preventScroll: true });
-    editor.setSelectionRange(a, old.length - b);
-    try { done = document.execCommand(ins ? "insertText" : "delete", false, ins); } catch {}
+  const edited = edit(old);
+  if (edited === old) return false;
+  let next = edited;
+  // A diagram with a saved layout keeps it current: new nodes (placed by
+  // the canvas) join it, deleted ones leave it.
+  if (hasLayout(old) && hasLayout(next)) {
+    const layout = layoutFor(next);
+    if (layout) next = fe.writePositions(next, layout);
   }
+  // Type the change into the code panel, the edit itself first: the
+  // panel then shows the edit, not the layout line at the bottom (a
+  // change to the layout alone leaves the panel where it was).
+  let done;
+  if (layoutOnly(old, edited)) done = keepView(() => typeInto(old, next));
+  else done = typeInto(old, edited) && (next === edited || keepView(() => typeInto(edited, next)));
   if (!done || editor.value !== next) {
     editor.value = next;
     editor.dispatchEvent(new Event("input"));
@@ -1786,6 +1820,7 @@ nodeTools.addEventListener("pointerdown", (ev) => {
     if (btn.dataset.act === "rename") { setHover(null, true); startRename(id); }
     else if (btn.dataset.act === "color") togglePalette([id], btn);
     else if (btn.dataset.act === "shape") togglePalette([id], btn, "shape");
+    else if (btn.dataset.act === "duplicate") { setHover(null, true); pasteText(copyText([id])); }
     else if (btn.dataset.act === "delete") {
       setHover(null, true);
       if (applySource((src) => fe.deleteNode(src, id))) {
@@ -1995,6 +2030,7 @@ multiTools.addEventListener("click", (e) => {
     if (home) applySource((src) => fe.ungroup(src, home));
   } else if (b.dataset.act === "color") togglePalette(sel.ids, b);
   else if (b.dataset.act === "shape") togglePalette(sel.ids, b, "shape");
+  else if (b.dataset.act === "duplicate") duplicateSelection();
   else if (b.dataset.act === "delete") deleteSelection();
 });
 
@@ -2009,6 +2045,124 @@ function groupSelection() {
   if (err) { errBox.textContent = err; errBox.style.display = "block"; return; }
   if (ok) startGroupTitle(gid, ids);
 }
+
+// ── Copy / paste / duplicate ──
+// Copied nodes travel as Mermaid text — their lines, the edges among
+// them, their style lines and a `%% flowmaid:pos` line — so they paste
+// into this diagram, another one, another tab or a text editor alike.
+let clip = null; // the last text copied here
+let pasteLater = 0;
+function copyText(ids) {
+  const now = snapPos();
+  const text = fe.extractNodes(good.src, ids);
+  const pos = ids.filter((id) => now.has(id)).map((id) => [id, now.get(id)]);
+  return pos.length ? fe.writePositions(text, pos) : text;
+}
+function copySelection(cut = false) {
+  const ids = selIds();
+  if (!editActive() || !ids.length) return null;
+  clip = { text: copyText(ids) };
+  if (cut) deleteSelection();
+  return clip.text;
+}
+const nodeKeys = (src) => node_keys(src).split("\n").filter(Boolean);
+// Paste Mermaid lines as new nodes (ids already in use are renamed);
+// a line of plain text becomes one node with that label. The nodes keep
+// their copied arrangement, placed clear of the other nodes.
+function pasteText(text) {
+  if (!editActive() || !text?.trim()) return false;
+  text = text.replace(/\r\n?/g, "\n");
+  const plain = !text.trim().includes("\n") && !/[[\](){}<>|=&;:%"-]/.test(text);
+  const before = new Set(good.keys);
+  let added = [], back = new Map(), from = new Map();
+  if (!plain) {
+    let r;
+    try { r = fe.pasteNodes(editor.value, text); nodeKeys(r.src); } catch { r = null; }
+    if (r) {
+      back = new Map([...r.map].map(([a, b]) => [b, a]));
+      from = fe.readPositions(text);
+      try { added = nodeKeys(r.src).filter((k) => !before.has(k)); } catch {}
+    }
+    if (!added.length) {
+      errBox.textContent = "Nothing to paste: the clipboard holds no flowchart nodes.";
+      errBox.style.display = "block";
+      return false;
+    }
+  }
+  const vr = view.getBoundingClientRect();
+  const mid = clientToLayout(vr.left + vr.width / 2, vr.top + vr.height / 2);
+  let place = () => null;
+  const known = added.filter((id) => from.has(back.get(id) ?? id));
+  if (known.length) {
+    const pts = known.map((id) => from.get(back.get(id) ?? id));
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    // Where they were copied from, or the middle of the view when that
+    // is off screen (say, pasting into another diagram).
+    let base = [0, 0];
+    const c = layoutToView((x0 + x1) / 2, (y0 + y1) / 2);
+    if (mid && (!c || c[0] < 0 || c[1] < 0 || c[0] > vr.width || c[1] > vr.height)) {
+      base = [mid[0] - (x0 + x1) / 2, mid[1] - (y0 + y1) / 2];
+    }
+    // Then the first spot, from there, where they cover no node: in
+    // place, else beside the originals, else below, then further out.
+    const stepX = x1 - x0 + NEW_W + GAP, stepY = y1 - y0 + NEW_H + GAP;
+    const tries = [[0, 0]];
+    for (let k = 1; k <= 8; k++) tries.push([k * stepX, 0], [0, k * stepY]);
+    const free = ([dx, dy]) => pts.every(([x, y]) => !overlaps(x + base[0] + dx, y + base[1] + dy));
+    const [dx, dy] = tries.find(free) ?? [stepX, 0];
+    place = (id) => { const p = from.get(back.get(id) ?? id); return p && [p[0] + base[0] + dx, p[1] + base[1] + dy]; };
+  }
+  // The rest (no saved spot): a row from the first free spot in view.
+  const start = mid ? freeSpot(mid) : null;
+  let k = 0;
+  const spot = (id) => place(id) ?? (start && [start[0] + (k % 4) * (NEW_W + GAP), start[1] + Math.floor(k++ / 4) * (NEW_H + GAP)]);
+  let ids = added;
+  const ok = applySource((src) => {
+    let next;
+    if (plain) {
+      const id = fe.freshId(src, good.keys);
+      next = fe.addNode(src, id, text.trim().slice(0, 200));
+      ids = [id];
+    } else {
+      next = fe.pasteNodes(src, text).src;
+    }
+    for (const id of ids) { const p = spot(id); if (p) savedPos.set(id, p); }
+    return next;
+  });
+  if (!ok) return false;
+  errBox.style.display = "none";
+  select(ids.length === 1 ? { type: "node", id: ids[0] } : { type: "nodes", ids });
+  reveal(ids[0]);
+  return true;
+}
+function duplicateSelection() {
+  const ids = selIds();
+  if (editActive() && ids.length) pasteText(copyText(ids));
+}
+const inText = (t) => t?.closest?.("textarea, input, [contenteditable], dialog");
+document.addEventListener("copy", (e) => {
+  if (inText(e.target) || !getSelection().isCollapsed) return;
+  const text = copySelection(false);
+  if (text === null) return;
+  e.clipboardData.setData("text/plain", text);
+  e.preventDefault();
+});
+document.addEventListener("cut", (e) => {
+  if (inText(e.target) || !getSelection().isCollapsed) return;
+  const text = copySelection(true);
+  if (text === null) return;
+  e.clipboardData.setData("text/plain", text);
+  e.preventDefault();
+});
+document.addEventListener("paste", (e) => {
+  clearTimeout(pasteLater);
+  if (inText(e.target) || !editActive()) return;
+  const text = e.clipboardData?.getData("text/plain");
+  if (!text) return;
+  e.preventDefault();
+  pasteText(text);
+});
 
 // ── Colour palette ──
 const PALETTE = [
@@ -2238,6 +2392,17 @@ document.addEventListener("keydown", (e) => {
   if (e.target.closest?.("textarea, input, .dd")) return;
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key.toLowerCase() === "g" && selIds().length) { e.preventDefault(); groupSelection(); return; }
+  if (mod && e.key.toLowerCase() === "d" && selIds().length) { e.preventDefault(); duplicateSelection(); return; }
+  // The copy event writes the clipboard; this keeps a copy for the
+  // paste fallback below where no copy event fires off text (Safari).
+  if (mod && e.key.toLowerCase() === "c" && selIds().length && getSelection().isCollapsed) { copySelection(false); return; }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === "v" && clip) {
+    // Browsers that fire no paste event outside text fields (Safari)
+    // still paste what was copied here.
+    clearTimeout(pasteLater);
+    pasteLater = setTimeout(() => pasteText(clip.text), 80);
+    return;
+  }
   if (mod) return;
   if (e.key === "Escape") {
     // Handled here first; fullscreen only exits on an Escape nobody used.
@@ -2459,10 +2624,6 @@ function histRecord(moved = false) {
     hist.stack.push({ src, pos: snapPos() });
     if (hist.stack.length > 300) hist.stack.shift();
     hist.i = hist.stack.length - 1;
-  } else {
-    // Same code: keep the step's positions current (e.g. a node an edit
-    // just placed), so going back here restores them.
-    histTop().pos = snapPos();
   }
   syncUndoUI();
 }
@@ -2528,10 +2689,76 @@ for (const b of aiDialog.querySelectorAll("[data-copy]")) {
   });
 }
 
+// ── Autosave & share links ──
+// The scratch diagram (no file open) is kept in this browser and comes
+// back on reload. A share link carries the whole source (layout included)
+// in the URL hash, deflated: nothing is uploaded anywhere.
+const LIVE = !!document.querySelector('script[src="/__live.js"]');
+const DRAFT_KEY = "flowmaid:draft";
+let draftT = 0;
+function saveDraft() {
+  // Files save to disk, the live view to the agent.
+  if (LIVE || current >= 0) return;
+  // An edited shared diagram becomes the draft; a reload shows the edits.
+  dropShareHash();
+  clearTimeout(draftT);
+  draftT = setTimeout(() => { try { localStorage.setItem(DRAFT_KEY, editor.value); } catch {} }, 400);
+}
+function loadDraft() {
+  try { return localStorage.getItem(DRAFT_KEY); } catch { return null; }
+}
+function b64url(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function unb64url(s) {
+  const bin = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+async function encodeShare(src) {
+  const bytes = new TextEncoder().encode(src);
+  if (!window.CompressionStream) return "s=" + b64url(bytes);
+  const z = new Blob([bytes]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  return "z=" + b64url(new Uint8Array(await new Response(z).arrayBuffer()));
+}
+// The source in a `#z=…` / `#s=…` hash, or null.
+async function decodeShare(hash) {
+  const m = hash.match(/^#([zs])=([\w-]+)$/);
+  if (!m) return null;
+  const bytes = unb64url(m[2]);
+  if (m[1] === "s") return new TextDecoder().decode(bytes);
+  const raw = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new TextDecoder().decode(await new Response(raw).arrayBuffer());
+}
+function notAnExample() {
+  for (const it of ddItems) it.setAttribute("aria-selected", "false");
+  ddLabel.textContent = "Examples";
+}
+const SHARE_HASH = /^#[zs]=/;
+function dropShareHash() {
+  if (SHARE_HASH.test(location.hash)) history.replaceState(null, "", location.pathname + location.search);
+}
+// Links point at the public playground, also from the local live view.
+const shareBase = () => LIVE ? "https://opensource.go-routine.com/flowmaid-web/" : location.origin + location.pathname;
+// Open the diagram in a share link. Merely viewing it leaves the draft
+// alone: the hash stays until the first edit (or another document).
+async function openShared() {
+  let src = null;
+  try { src = await decodeShare(location.hash); } catch { /* a damaged link: ignore it */ }
+  if (src === null) return false;
+  selectFile(-1);
+  notAnExample();
+  await openSource(src, true);
+  return true;
+}
+addEventListener("hashchange", () => { if (!LIVE) openShared(); });
+
 // ── Wiring ──
 let deb;
 editor.addEventListener("input", () => {
   if (!hist.applying) histSoon();
+  saveDraft();
   scheduleHighlight();
   const f = files[current];
   if (f) {
@@ -2543,7 +2770,8 @@ editor.addEventListener("input", () => {
 });
 
 // Load a source as a fresh document: new layout, no carried-over drags.
-async function openSource(src) {
+async function openSource(src, shared = false) {
+  if (!shared) dropShareHash();
   editor.value = src;
   histReset(src);
   editor.scrollTop = 0;
@@ -2627,11 +2855,40 @@ document.getElementById("relayout").addEventListener("click", () => {
     good.pos = Array.from(auto_positions(good.src));
   }
   // Auto layout is an explicit reset — drop the remembered drags so
-  // they don't resurrect on the next edit.
+  // they don't resurrect on the next edit, and the positions saved in the
+  // source (one undo step either way).
+  if (hasLayout(editor.value) && editor.value === good.src) {
+    // `prepare` runs after the current state is in the history, so undo
+    // brings the dragged layout back.
+    applySource((src) => fe.writePositions(src, []), () => {
+      good.keys.forEach((k) => savedPos.delete(k));
+    });
+    return;
+  }
   good.keys.forEach((k) => savedPos.delete(k));
   render();
   histRecord(true);
 });
+
+// ── Saved layout ──
+// Dragged positions are written into the source as `%% flowmaid:pos`
+// comment lines, so they come back with the file, a share link or the
+// live view. Once a diagram has them, canvas edits keep them current.
+const hasLayout = (src) => src.includes("%% flowmaid:pos");
+// The layout to save for `src`: every node it has that has a position.
+function layoutFor(src) {
+  let keys;
+  try { keys = node_keys(src).split("\n").filter(Boolean); } catch { return null; }
+  const now = snapPos();
+  return keys.filter((k) => now.has(k)).map((k) => [k, now.get(k)]);
+}
+function savePositions() {
+  const saveable = good && engine === "flowmaid" && !isAdvance(good.src) && !isSwimlaneText(good.src);
+  // Code mid-edit (doesn't parse): keep the move for this session only.
+  if (!saveable || editor.value !== good.src) { histRecord(true); return; }
+  const pos = good.keys.map((k, i) => [k, [good.pos[i * 2], good.pos[i * 2 + 1]]]);
+  if (!applySource((src) => fe.writePositions(src, pos))) histRecord(true);
+}
 
 function downloadBlob(text, type, name) {
   const a = document.createElement("a");
@@ -2721,6 +2978,10 @@ async function exportAs(act) {
       downloadBlob(svgText(), "image/svg+xml", baseName() + ".svg");
     } else if (act === "png") {
       downloadBlob(await svgToPng(), "image/png", baseName() + ".png");
+    } else if (act === "share") {
+      const url = shareBase() + "#" + (await encodeShare(editor.value));
+      await clipboard().writeText(url);
+      flash("Link copied ✓");
     } else if (act === "copy-svg") {
       await clipboard().writeText(svgText());
       flash("Copied ✓");
@@ -3136,7 +3397,16 @@ document.addEventListener("keydown", (e) => {
 await init();
 applyEngineUI();
 showVersion();
-openSource(EXAMPLES.flow);
+// A share link, else the draft from last time, else the first example.
+if (LIVE || !(await openShared())) {
+  const draft = LIVE ? null : loadDraft();
+  if (draft && draft !== EXAMPLES.flow) {
+    notAnExample();
+    openSource(draft);
+  } else {
+    openSource(EXAMPLES.flow);
+  }
+}
 
 // Hook for pages that drive the playground (the flowmaid MCP live view):
 // open() loads a document with a fresh layout; replace() swaps the text
