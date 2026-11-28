@@ -37,6 +37,8 @@ jobs:
         run: diff pkg/flowmaid_web.js target/pkg-fresh/flowmaid_web.js && diff pkg/flowmaid_web.d.ts target/pkg-fresh/flowmaid_web.d.ts
       - name: behaviour unchanged
         run: node tests/pkg-matches-source.mjs target/pkg-fresh/flowmaid_web.js
+      - name: index.html loads this build's modules (cache-busting stamp)
+        run: node scripts/stamp.mjs --check
 
   mcp:
     runs-on: ubuntu-latest

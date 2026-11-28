@@ -19,3 +19,4 @@ if [ "${v:-0}" -lt 116 ]; then
 fi
 $WASM_OPT -O pkg/flowmaid_web_bg.wasm -o pkg/flowmaid_web_bg.wasm
 ls -l pkg/flowmaid_web_bg.wasm
+node scripts/stamp.mjs

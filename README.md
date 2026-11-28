@@ -57,7 +57,7 @@ scripts/build-wasm.sh                    # emits pkg/ (cargo + wasm-bindgen + wa
 python3 -m http.server                   # then open http://localhost:8000
 ```
 
-`pkg/` is committed on purpose so GitHub Pages can serve the playground without a build pipeline.
+`pkg/` is committed on purpose so GitHub Pages can serve the playground without a build pipeline. `index.html` loads `flowedit.js` and `pkg/` through an import map with a hash of those files in their URLs (`?v=…`), so after a deploy no browser runs the new page against modules it still has cached (GitHub Pages caches `.js` for hours, the page for minutes). `build-wasm.sh` restamps it; after editing `flowedit.js` alone run `node scripts/stamp.mjs` (CI checks it).
 
 ## License
 
