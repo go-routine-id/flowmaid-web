@@ -725,6 +725,19 @@
   <a href="https://github.com/go-routine-id/flowmaid/issues/10" target="_blank">roadmap</a>
 </footer>
 
+<!-- Versioned module URLs, stamped by scripts/stamp.mjs (CI checks
+     them). GitHub Pages caches .js for hours but this page for minutes:
+     without new URLs per build, a visitor could run a new page against
+     old modules after a deploy. -->
+<script type="importmap">
+{
+  "imports": {
+    "./flowedit.js": "./flowedit.js?v=003cb685bb1f",
+    "./pkg/flowmaid_web.js": "./pkg/flowmaid_web.js?v=003cb685bb1f",
+    "./pkg/flowmaid_web_bg.wasm": "./pkg/flowmaid_web_bg.wasm?v=003cb685bb1f"
+  }
+}
+</script>
 <script type="module">
 import init, {
   render_routed, node_keys, auto_positions, node_sizes, engine_version,
@@ -910,8 +923,8 @@ function zoomAt(cx, cy, factor) {
   applyCam();
 }
 
-// Below this zoom node labels stop being legible, so a freshly opened
-// wide diagram starts here, top-aligned, instead of shrunk to fit.
+// Below this zoom node labels get hard to read, so a freshly opened big
+// diagram starts here, top-aligned, instead of shrunk to fit.
 const Z_READABLE = 0.62;
 
 // Fit the current diagram inside the viewport with a little margin.
@@ -924,16 +937,35 @@ function fitView(zCap = 1.5, readable = false) {
   const h = parseFloat(svg.getAttribute("height")) || svg.viewBox.baseVal?.height;
   if (!(w > 0 && h > 0)) return;
   const vr = view.getBoundingClientRect();
-  cam.z = Math.min(Z_MAX, Math.max(Z_MIN, Math.min((vr.width - 56) / w, (vr.height - 56) / h, zCap)));
+  // Fit into the canvas minus what floats over it: the file-title card
+  // at the top (when shown), the edit and zoom bars at the bottom.
+  const top = document.getElementById("doc-title").textContent ? 64 : 28;
+  const bottom = bottomInset(vr);
+  const room = Math.max(1, vr.height - top - bottom);
+  cam.z = Math.min(Z_MAX, Math.max(Z_MIN, Math.min((vr.width - 56) / w, room / h, zCap)));
   cam.x = (vr.width - w * cam.z) / 2;
-  cam.y = (vr.height - h * cam.z) / 2;
-  if (readable && cam.z < Z_READABLE) {
+  cam.y = top + (room - h * cam.z) / 2;
+  // A diagram that would need to shrink a lot opens at a readable zoom
+  // instead; one that only just doesn't fit is shown whole (a node half
+  // under the bars looks broken).
+  if (readable && cam.z < Z_READABLE * 0.75) {
     cam.z = Z_READABLE;
     cam.x = Math.max(28, (vr.width - w * cam.z) / 2);
-    // Clear the floating file-title card when one is shown.
-    cam.y = document.getElementById("doc-title").textContent ? 64 : 28;
+    cam.y = top;
   }
   applyCam();
+}
+
+// Space the bars along the canvas's bottom edge take up (plus a gap).
+function bottomInset(vr) {
+  let edge = vr.bottom;
+  for (const id of ["zoombar", "edit-bar"]) {
+    const el = document.getElementById(id);
+    if (!el || getComputedStyle(el).display === "none") continue;
+    const r = el.getBoundingClientRect();
+    if (r.height && r.top < edge && r.bottom > vr.top + vr.height / 2) edge = r.top;
+  }
+  return Math.max(28, vr.bottom - edge + 14);
 }
 
 // ── Render engine: flowmaid (wasm, bundled) or mermaid.js ──
@@ -3394,7 +3426,9 @@ document.addEventListener("keydown", (e) => {
   setFullscreen(false);
 });
 
-await init();
+// The wasm by its versioned URL too (import.meta.resolve reads the
+// import map; without it, the plain URL).
+await init(import.meta.resolve ? { module_or_path: import.meta.resolve("./pkg/flowmaid_web_bg.wasm") } : undefined);
 applyEngineUI();
 showVersion();
 // A share link, else the draft from last time, else the first example.
